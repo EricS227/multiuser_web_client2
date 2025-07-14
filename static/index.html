@@ -40,9 +40,17 @@
     </div>
 
     <script>
-        let token = "";
+        let token = localStorage.getItem("access_token") || "";
         let currentConversationId = null;
         let ws = null;
+
+        // Se já estiver autenticado, carrega interface e WebSocket
+        if (token) {
+            document.getElementById("login-section").style.display = "none";
+            document.getElementById("chat-section").style.display = "block";
+            connectWebSocket();
+            loadConversations();
+        }
 
         async function login() {
             const email = document.getElementById("email").value;
@@ -59,17 +67,19 @@
             const data = await res.json();
             if (data.access_token) {
                 token = data.access_token;
+                localStorage.setItem("access_token", token);
                 document.getElementById("login-section").style.display = "none";
                 document.getElementById("chat-section").style.display = "block";
                 connectWebSocket();
                 loadConversations();
+                window.location.href = "clientui.html";
             } else {
                 alert("Erro ao fazer login.");
             }
         }
 
         function connectWebSocket() {
-            ws = new WebSocket(`ws://${location.host}/ws`);
+            ws = new WebSocket(`ws://${location.host}/ws?token=${token}`);
             ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
                 if (msg.conversation_id === currentConversationId) {
@@ -103,18 +113,14 @@
             document.getElementById("customer-number").textContent = number;
             document.getElementById("messages").innerHTML = "";
 
-            const res = await fetch("/conversations", {
+            const messagesRes = await fetch(`/conversations/${id}/messages`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
+            const messages = await messagesRes.json();
 
-            const conversations = await res.json();
-            const conversation = conversations.find(c => c.id === id);
-            if (conversation) {
-                const messagesRes = await fetch(`/conversations`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
-                // Para simplificar, não foi implementado endpoint para buscar mensagens separadamente.
-            }
+            messages.forEach(m => {
+                appendMessage(m.sender, m.message);
+            });
         }
 
         function appendMessage(sender, content) {

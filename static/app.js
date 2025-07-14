@@ -1,13 +1,16 @@
 let token = "";
 let selectedConversation = null;
-let ws = new WebSocket("ws://localhost:8000/ws");
+let ws = null;
 
-ws.onmessage = (event) => {
+function connectWebSocket() {
+  ws = new WebSocket(`ws://localhost:8000/ws?token=${token}`);
+  ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
     const msgDiv = document.createElement("div");
     msgDiv.textContent = `${data.sender}: ${data.message || data.content}`;
     document.getElementById("messages").appendChild(msgDiv);
-};
+  };
+}
 
 async function login() {
   const res = await fetch("http://localhost:8000/login", {
@@ -19,8 +22,14 @@ async function login() {
     }),
   });
 
+  if (!res.ok) {
+    alert("Falha no login");
+    return;
+  }
+
   const data = await res.json();
   token = data.access_token;
+  connectWebSocket();
   loadConversations();
 }
 
@@ -28,6 +37,11 @@ async function loadConversations() {
   const res = await fetch("http://localhost:8000/conversations", {
     headers: { Authorization: `Bearer ${token}` },
   });
+
+  if (!res.ok) {
+    alert("Erro ao carregar conversas: " + res.status);
+    return;
+  }
 
   const conversations = await res.json();
   const container = document.getElementById("conversations");
@@ -38,7 +52,7 @@ async function loadConversations() {
     btn.textContent = `Cliente: ${conv.customer_number}`;
     btn.onclick = () => {
       selectedConversation = conv;
-      document.getElementById("messages").innerHTML = ""; // limpa ao selecionar
+      document.getElementById("messages").innerHTML = "";
     };
     container.appendChild(btn);
   });
@@ -49,7 +63,7 @@ async function sendMessage() {
   const text = input.value;
   if (!selectedConversation || !text) return;
 
-  await fetch(`http://localhost:8000/conversations/${selectedConversation.id}/reply`, {
+  const res = await fetch(`http://localhost:8000/conversations/${selectedConversation.id}/reply`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -58,5 +72,9 @@ async function sendMessage() {
     body: JSON.stringify({ message: text }),
   });
 
-  input.value = "";
+  if (!res.ok) {
+    alert("Erro ao enviar mensagem");
+  } else {
+    input.value = "";
+  }
 }

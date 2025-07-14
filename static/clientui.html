@@ -1,54 +1,118 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Painel de Operador</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      background: #f7f7f7;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f1f2f7;
       margin: 0;
       padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
     }
     header {
       background-color: #4338ca;
       color: white;
       padding: 1rem;
       text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     main {
       display: flex;
-      flex-direction: row;
+      gap: 1rem;
       padding: 1rem;
+      height: 100%;
     }
     section {
-      flex: 1;
-      margin: 0 1rem;
+      overflow-y: auto;
+      padding: 1rem;
       background: white;
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.1);
-      padding: 1rem;
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
     }
-    h2 {
-      margin-top: 0;
+
+    section:nth-child(1),
+    section:nth-child(2) {
+      flex: 0 0 300px;
     }
+
+    section:nth-child(3) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
     .conversation {
-      border: 1px solid #ddd;
-      border-radius: 5px;
+      background: white;
+      border-radius: 8px;
       padding: 10px;
       margin-bottom: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
     }
-    .assign-btn {
-      background-color: #43a047;
+    .conversation:hover {
+      background: #e8eaf6;
+    }
+
+    .assign-btn, button {
+      background-color: #4338ca;
       color: white;
       border: none;
       padding: 0.5rem 1rem;
       border-radius: 5px;
       cursor: pointer;
+      margin-top: 5px;
     }
-    .assign-btn:hover {
+    .assign-btn:hover, button:hover {
       background-color: #388e3c;
+    }
+
+    #chat {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    #chat-messages {
+      flex: 1;
+      background-color: #fff;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-y: auto;
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .message {
+      max-width: 70%;
+      margin: 5px 0;
+      padding: 10px;
+      border-radius: 15px;
+      word-wrap: break-word;
+      background-color: #f0f0f0;
+    }
+
+    .message.agent {
+      align-self: flex-end;
+      background-color: #e1f5fe;
+      border-bottom-left-radius: 0;
+    }
+
+    .chat-input {
+      display: flex;
+      gap: 10px;
+    }
+
+    .chat-input input {
+      flex: 1;
+      padding: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
     }
   </style>
 </head>
@@ -66,94 +130,196 @@
       <div id="my-conversations"></div>
     </section>
     <section>
-        <h2>Chat</h2>
-        <div id="chat">
-            <div id="chat-messages"></div>
-            <input type="text" id="message-input" placeholder="Digite sua mensagem...">
-            <button onclick="sendMessage()">Enviar</button>
-            <button onclick="endConversation()">Encerrar Conversa</button>
+      <h2>Chat</h2>
+      <div id="chat">
+        <div id="chat-messages"></div>
+        <div class="chat-input">
+          <input type="text" id="message-input" placeholder="Digite sua mensagem...">
+          <button onclick="sendMessage()">Enviar</button>
+          <button onclick="endConversation()">Encerrar</button>
+          <button id="logout" onclick="logout()" style="position: absolute; top: 10px; right: 10px;">
+            Logout
+          </button>
         </div>
+      </div>
     </section>
+    
   </main>
 
   <script>
-    localStorage.setItem("access_token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkB0ZXN0ZS5jb20iLCJleHAiOjE3NTI0NTEyMjN9.nB9W0IP-WP8_FayY6GKW_oxjz0WyUHiXuYOvGltAJdw");
-
-    const token = localStorage.getItem("access_token");
+    let token = localStorage.getItem("access_token");
     let currentConversationId = null;
-    let ws = new WebSocket("ws://" + window.location.host + "/ws");
+    let ws = null;
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.conversation_id === currentConversationId) {
-        const chat = document.getElementById("chat-messages");
-        const msg = `<div class="message"><span class="sender">${data.sender}:</span> ${data.message}</div>`;
-        chat.innerHTML += msg;
-        chat.scrollTop = chat.scrollHeight;
-      }
-    };
+    if (!token) {
+      alert("Token ausente. Faça login novamente.");
+      window.location.href = "index.html";
+    }
+
+    // Conecta ao WebSocket com o token
+    function connectWebSocket() {
+      ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.conversation_id === currentConversationId) {
+          const chat = document.getElementById("chat-messages");
+          const time = data.timestamp ? new Date(data.timestamp) : new Date();
+          const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const msgClass = data.sender === "agent" ? "message agent" : "message";
+
+          chat.innerHTML += `
+            <div class="${msgClass}">
+              <span class="sender"><strong>${data.sender}:</strong> ${data.message}</span><br>
+              <small style="font-size: 10px; color: gray;">${timeStr}</small>
+            </div>
+          `;
+          chat.scrollTop = chat.scrollHeight;
+        }
+      };
+
+      ws.onerror = () => {
+        console.error("Erro no WebSocket. Verifique se o token é válido.");
+      };
+    }
 
     async function fetchMyConversations() {
-      const my = await fetch("/my-conversations", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const myData = await my.json();
+      try {
+        const res = await fetch("/my-conversations", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      document.getElementById("my-conversations").innerHTML = myData
-        .map(c => `
+        if (res.status === 401) {
+          alert("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const myData = await res.json();
+        document.getElementById("my-conversations").innerHTML = myData.map(c => `
           <div class="conversation" onclick="loadChat(${c.id})">
             <p><strong>Número:</strong> ${c.customer_number}</p>
             <p><strong>Status:</strong> ${c.status}</p>
           </div>
         `).join("");
+      } catch (error) {
+        console.error("Erro ao carregar minhas conversas:", error);
+      }
+    }
+
+    async function fetchAllConversations() {
+      try {
+        const res = await fetch("/conversations", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          alert("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById("all-conversations").innerHTML = data
+          .filter(c => c.status === "pending")
+          .map(c => `
+            <div class="conversation" onclick="loadChat(${c.id})">
+              <p><strong>Nome:</strong> ${c.customer_number}</p>
+              <p><strong>Status:</strong> ${c.status}</p>
+            </div>
+          `).join("");
+      } catch (error) {
+        console.error("Erro ao carregar todas as conversas:", error);
+      }
     }
 
     async function loadChat(conversationId) {
       currentConversationId = conversationId;
-      const res = await fetch(`/conversations/${conversationId}/messages`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const messages = await res.json();
-      const chat = document.getElementById("chat-messages");
-      chat.innerHTML = messages.map(m => `
-        <div class="message"><span class="sender">${m.sender}:</span> ${m.content}</div>
-      `).join("");
-      document.getElementById("chat").style.display = "block";
+
+      try {
+        const res = await fetch(`/conversations/${conversationId}/messages`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          alert("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const messages = await res.json();
+        const chat = document.getElementById("chat-messages");
+
+        chat.innerHTML = messages.map(m => {
+          const msgClass = m.sender === "agent" ? "message agent" : "message";
+          const timeStr = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return `
+            <div class="${msgClass}">
+              <span class="sender"><strong>${m.sender}:</strong> ${m.content}</span><br>
+              <small style="font-size: 10px; color: gray;">${timeStr}</small>
+            </div>
+          `;
+        }).join("");
+
+        chat.scrollTop = chat.scrollHeight;
+      } catch (error) {
+        console.error("Erro ao carregar mensagens:", error);
+      }
+    }
+
+
+    function logout() {
+      localStorage.removeItem("access_token");
+      window.location.href = "index.html";
     }
 
     async function sendMessage() {
       const input = document.getElementById("message-input");
-      const content = input.value;
+      const content = input.value.trim();
       if (!content || !currentConversationId) return;
 
-      await fetch(`/conversations/${currentConversationId}/reply`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: content })
-      });
-      input.value = "";
+      try {
+        await fetch(`/conversations/${currentConversationId}/reply`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ message: content })
+        });
+
+        input.value = "";
+      } catch (error) {
+        console.error("Erro ao enviar mensagem:", error);
+      }
     }
 
     async function endConversation() {
       if (!currentConversationId) return;
 
-      await fetch(`/conversations/${currentConversationId}/end`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      try {
+        await fetch(`/conversations/${currentConversationId}/end`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-      alert("Conversa encerrada com sucesso.");
-      document.getElementById("chat-messages").innerHTML = "";
-      currentConversationId = null;
-      fetchMyConversations();
+        alert("Conversa encerrada com sucesso.");
+        document.getElementById("chat-messages").innerHTML = "";
+        currentConversationId = null;
+        fetchMyConversations();
+      } catch (error) {
+        console.error("Erro ao encerrar conversa:", error);
+      }
     }
 
+    // Inicialização
+    connectWebSocket();
     fetchMyConversations();
+    fetchAllConversations();
   </script>
+
 </body>
 </html>
