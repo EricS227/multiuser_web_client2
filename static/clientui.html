@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel de Operador</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #4338ca;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+    }
+    main {
+      display: flex;
+      flex-direction: row;
+      padding: 1rem;
+    }
+    section {
+      flex: 1;
+      margin: 0 1rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      padding: 1rem;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    .conversation {
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .assign-btn {
+      background-color: #43a047;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .assign-btn:hover {
+      background-color: #388e3c;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Painel do Operador</h1>
+  </header>
+  <main>
+    <section>
+      <h2>Conversas disponíveis</h2>
+      <div id="all-conversations"></div>
+    </section>
+    <section>
+      <h2>Minhas conversas</h2>
+      <div id="my-conversations"></div>
+    </section>
+    <section>
+        <h2>Chat</h2>
+        <div id="chat">
+            <div id="chat-messages"></div>
+            <input type="text" id="message-input" placeholder="Digite sua mensagem...">
+            <button onclick="sendMessage()">Enviar</button>
+            <button onclick="endConversation()">Encerrar Conversa</button>
+        </div>
+    </section>
+  </main>
+
+  <script>
+    localStorage.setItem("access_token", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkB0ZXN0ZS5jb20iLCJleHAiOjE3NTI0NTEyMjN9.nB9W0IP-WP8_FayY6GKW_oxjz0WyUHiXuYOvGltAJdw");
+
+    const token = localStorage.getItem("access_token");
+    let currentConversationId = null;
+    let ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.conversation_id === currentConversationId) {
+        const chat = document.getElementById("chat-messages");
+        const msg = `<div class="message"><span class="sender">${data.sender}:</span> ${data.message}</div>`;
+        chat.innerHTML += msg;
+        chat.scrollTop = chat.scrollHeight;
+      }
+    };
+
+    async function fetchMyConversations() {
+      const my = await fetch("/my-conversations", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const myData = await my.json();
+
+      document.getElementById("my-conversations").innerHTML = myData
+        .map(c => `
+          <div class="conversation" onclick="loadChat(${c.id})">
+            <p><strong>Número:</strong> ${c.customer_number}</p>
+            <p><strong>Status:</strong> ${c.status}</p>
+          </div>
+        `).join("");
+    }
+
+    async function loadChat(conversationId) {
+      currentConversationId = conversationId;
+      const res = await fetch(`/conversations/${conversationId}/messages`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const messages = await res.json();
+      const chat = document.getElementById("chat-messages");
+      chat.innerHTML = messages.map(m => `
+        <div class="message"><span class="sender">${m.sender}:</span> ${m.content}</div>
+      `).join("");
+      document.getElementById("chat").style.display = "block";
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("message-input");
+      const content = input.value;
+      if (!content || !currentConversationId) return;
+
+      await fetch(`/conversations/${currentConversationId}/reply`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ message: content })
+      });
+      input.value = "";
+    }
+
+    async function endConversation() {
+      if (!currentConversationId) return;
+
+      await fetch(`/conversations/${currentConversationId}/end`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      alert("Conversa encerrada com sucesso.");
+      document.getElementById("chat-messages").innerHTML = "";
+      currentConversationId = null;
+      fetchMyConversations();
+    }
+
+    fetchMyConversations();
+  </script>
+</body>
+</html>
