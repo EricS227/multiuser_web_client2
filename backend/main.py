@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
@@ -33,7 +33,7 @@ SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # Twilio (opcional, pode remover se não for usar)
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID") or "SEU_ACCOUNT_SID"
@@ -81,7 +81,10 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections:
-            await connection.send_json(message)
+            try:
+                await connection.send_json(message)
+            except Exception:
+                self.disconnect(connection)
 
 
 manager = ConnectionManager()
@@ -90,10 +93,28 @@ manager = ConnectionManager()
 SQLModel.metadata.create_all(engine)
 
 
+
+
+
 # Utils
-def get_session():
+@app.on_event("startup")
+def create_admin_user():
     with Session(engine) as session:
+        existing = session.exec(select(User).where(User.email == "admin@test.com")).first()
+        if not existing:
+            user = User(email="admin@test.com", name="Admin", password_hash=hash_password("senha123"), role="admin")
+            session.add(user)
+            session.commit()
+
+            
+def get_session():
+    session = Session(engine)
+    try:
         yield session
+    finally:
+        session.close()
+
+
 
 def hash_password(password):
     return pwd_context.hash(password)
@@ -146,7 +167,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
 
 @app.get("/conversations")
 def get_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return session.exec(select(Conversation)).all()
+    if user.role == "admin":
+        return session.exec(select(Conversation)).all()
+    else:
+        return session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
 
 
 @app.post("/conversations/{conversation_id}/reply")
@@ -177,7 +201,7 @@ def reply(conversation_id: int, payload: dict, session: Session = Depends(get_se
 
 @app.post("/conversations/{conversation_id}/end")
 def end_conversation(conversation_id: int, db: Session = Depends(get_session), user=Depends(get_current_user)):
-    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    conversation = db.get(Conversation, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="conversation not found")
     if conversation.assigned_to != user.id:
@@ -213,7 +237,8 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
     await manager.broadcast({
         "conversation_id": conversation.id,
         "sender": "customer",
-        "message": message
+        "message": message,
+        "timestamp": datetime.utcnow().isoformat()
     })
 
     return {"status": "received"}
@@ -232,6 +257,31 @@ def assign_conversation(conversation_id: int, user: User = Depends(get_current_u
 
 
 
+
+
+@app.post("/fake-conversation")
+def create_fake(session: Session = Depends(get_session)):
+    new = Conversation(customer_number="+55119999999", status="pending")
+    session.add(new)
+    session.commit()
+    session.refresh(new)
+    return {"id": new.id}
+
+
+@app.get("/conversations/{conversation_id}/messages")
+def get_messages(conversation_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    conversation = session.get(Conversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    
+    if conversation.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    messages = session.exec(
+        select(Message).where(Message.conversation_id == conversation_id)
+    ).all()
+    return messages
+
 @app.get("/my-conversations")
 def get_my_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     return session.exec(
@@ -239,7 +289,15 @@ def get_my_conversations(session: Session = Depends(get_session), user: User = D
     ).all()
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
+    await websocket.accept()
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        await websocket.send_json({"error": "Token inválido"})
+        await websocket.close()
+        return
+    
     await manager.connect(websocket)
     try:
         while True:
@@ -247,13 +305,15 @@ async def websocket_endpoint(websocket: WebSocket):
             await manager.broadcast(data)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+       
+
+#@app.websocket("/ws")
+#async def websocket_endpoint(websocket: WebSocket):
+   # await websocket.accept()
+    #while True:
+        #await websocket.receive_text()
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    while True:
-        await websocket.receive_text()
 
 # Serve arquivos estáticos HTML/JS
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
