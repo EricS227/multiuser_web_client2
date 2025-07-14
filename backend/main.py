@@ -175,6 +175,17 @@ def reply(conversation_id: int, payload: dict, session: Session = Depends(get_se
     return {"msg": "Mensagem enviada"}
 
 
+@app.post("/conversations/{conversation_id}/end")
+def end_conversation(conversation_id: int, db: Session = Depends(get_session), user=Depends(get_current_user)):
+    conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conversation:
+        raise HTTPException(status_code=404, detail="conversation not found")
+    if conversation.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    conversation.status = "closed"
+    db.commit()
+    return {"detail": "Conversation ended"}
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, session: Session = Depends(get_session)):
     payload = await request.json()
@@ -208,6 +219,25 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
     return {"status": "received"}
 
 
+
+@app.post("/conversations/{conversation_id}/assign")
+def assign_conversation(conversation_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    conversation = session.get(Conversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    conversation.assigned_to = user.id
+    session.add(conversation)
+    session.commit()
+    return {"msg": "Conversa atribuida ao operador"}
+
+
+
+@app.get("/my-conversations")
+def get_my_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    return session.exec(
+        select(Conversation).where(Conversation.assigned_to == user.id)
+    ).all()
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
@@ -218,6 +248,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    while True:
+        await websocket.receive_text()
 
 # Serve arquivos estáticos HTML/JS
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
