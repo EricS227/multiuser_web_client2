@@ -114,6 +114,11 @@
       border-radius: 5px;
       border: 1px solid #ccc;
     }
+
+    .conversation.active {
+      background: #c5cae9 !important;
+      border-left: 4px solid #3f51b5;
+    }
   </style>
 </head>
 <body>
@@ -137,6 +142,7 @@
           <input type="text" id="message-input" placeholder="Digite sua mensagem...">
           <button onclick="sendMessage()">Enviar</button>
           <button onclick="endConversation()">Encerrar</button>
+          <button onclick="criarConversaTeste()">Criar conversa teste</button>
           <button id="logout" onclick="logout()" style="position: absolute; top: 10px; right: 10px;">
             Logout
           </button>
@@ -158,6 +164,9 @@
 
     // Conecta ao WebSocket com o token
     function connectWebSocket() {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
       ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
 
       ws.onmessage = (event) => {
@@ -181,6 +190,17 @@
       ws.onerror = () => {
         console.error("Erro no WebSocket. Verifique se o token é válido.");
       };
+    }
+
+
+    function highlightSelected(conversationId) {
+      document.querySelectorAll(".conversation").forEach(div => {
+        if (parseInt(div.dataset.id) === conversationId) {
+          div.classList.add("active");
+        } else {
+          div.classList.remove("active");
+        }
+      });
     }
 
     async function fetchMyConversations() {
@@ -225,7 +245,7 @@
         document.getElementById("all-conversations").innerHTML = data
           .filter(c => c.status === "pending")
           .map(c => `
-            <div class="conversation" onclick="loadChat(${c.id})">
+            <div class="conversation" data-id="${c.id}" onclick="loadChat(${c.id})">
               <p><strong>Nome:</strong> ${c.customer_number}</p>
               <p><strong>Status:</strong> ${c.status}</p>
             </div>
@@ -236,19 +256,33 @@
     }
 
     async function loadChat(conversationId) {
-      currentConversationId = conversationId;
+      if (currentConversationId !== conversationId) {
+        currentConversationId = conversationId;
+
+        // Atribui a conversa
+        const assignRes = await fetch(`/conversations/${conversationId}/assign`, {
+          method: "POST",
+          headers: { Authorization:`Bearer ${token}`  }
+        });
+
+        if (!assignRes.ok) {
+          console.error("Erro ao atribuir conversa:", assignRes.status);
+          alert("Erro ao atribuir conversa.");
+          return;
+        }
+
+        // Atualiza lista após atribuição
+        fetchMyConversations();
+        fetchAllConversations();
+      }
+
+
+      highlightSelected(conversationId);
 
       try {
         const res = await fetch(`/conversations/${conversationId}/messages`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-
-        if (res.status === 401) {
-          alert("Sessão expirada. Faça login novamente.");
-          localStorage.removeItem("access_token");
-          window.location.href = "index.html";
-          return;
-        }
 
         const messages = await res.json();
         const chat = document.getElementById("chat-messages");
@@ -270,7 +304,6 @@
       }
     }
 
-
     function logout() {
       localStorage.removeItem("access_token");
       window.location.href = "index.html";
@@ -279,10 +312,14 @@
     async function sendMessage() {
       const input = document.getElementById("message-input");
       const content = input.value.trim();
-      if (!content || !currentConversationId) return;
+
+      if (!content || !currentConversationId) {
+        console.warn("Mensagem vazia ou conversa não selecionada");
+        return;
+      }
 
       try {
-        await fetch(`/conversations/${currentConversationId}/reply`, {
+        const res = await fetch(`/conversations/${currentConversationId}/reply`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -291,29 +328,92 @@
           body: JSON.stringify({ message: content })
         });
 
+        if (!res.ok) {
+          console.error("Erro na resposta da API:", res.status, await res.text());
+          return;
+        }
+
+        const chat = document.getElementById("chat-messages");
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        chat.innerHTML += `
+          <div class="message agent">
+            <span class="sender"><strong>agent:</strong> ${content}</span><br>
+            <small style="font-size: 10px; color: gray;">${timeStr}</small>
+          </div>
+        `;
+
+        chat.scrollTop = chat.scrollHeight;
         input.value = "";
       } catch (error) {
         console.error("Erro ao enviar mensagem:", error);
       }
     }
 
+
     async function endConversation() {
-      if (!currentConversationId) return;
+      console.log("endConversation called", {currentConversationId});
+      if (!currentConversationId) {
+        alert("Nenhuma conversa selecionada para encerrar.");
+        return;
+      }
 
       try {
-        await fetch(`/conversations/${currentConversationId}/end`, {
+        const res = await fetch(`/conversations/${currentConversationId}/end`, {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {Authorization:  `Bearer ${token}`}
         });
+
+        if (!res.ok) {
+          console.error("Erro na resposta da API:", res.status, await res.text());
+          alert("Erro ao encerrar conversa: " + res.status);
+          return;
+        }
 
         alert("Conversa encerrada com sucesso.");
         document.getElementById("chat-messages").innerHTML = "";
         currentConversationId = null;
         fetchMyConversations();
-      } catch (error) {
+        }  catch (error) {
         console.error("Erro ao encerrar conversa:", error);
       }
     }
+
+
+    async function criarConversaTeste() {
+      try {
+        const res = await fetch("/conversations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            customer_number: "+5511999999",
+            initial_message: "Olá, isso é um teste automático"
+          })
+        });
+
+        if (!res.ok) {
+          console.error("Erro ao criar conversa de teste:", await res.text());
+          return;
+        }
+
+        alert("Conversa teste criada");
+        fetchAllConversations();
+        fetchMyConversations();
+        } catch (error) {
+          console.error("Erro ao criar conversa de teste:", error);
+        }
+      }
+
+
+      document.getElementById("message-input").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          sendMessage();
+        }
+      });
 
     // Inicialização
     connectWebSocket();
