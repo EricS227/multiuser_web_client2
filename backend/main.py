@@ -8,10 +8,14 @@ from typing import Optional, List
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from twilio.rest import Client
+from pydantic import BaseModel
+from dotenv import load_dotenv 
+
 import os
 import asyncio
 import uvicorn
 
+load_dotenv()
 
 app = FastAPI()
 
@@ -65,6 +69,10 @@ class Message(SQLModel, table=True):
     content: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
+class ConversationCreate(BaseModel):
+    customer_number: str
+    initial_message: str
+
 
 # WebSocket Manager
 class ConnectionManager:
@@ -72,7 +80,7 @@ class ConnectionManager:
         self.active_connections: List[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
-        await websocket.accept()
+        #await websocket.accept()
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
@@ -88,6 +96,10 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+class MessagePayload(BaseModel):
+    message: str
 
 # Cria as tabelas no banco
 SQLModel.metadata.create_all(engine)
@@ -169,33 +181,37 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
 def get_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     if user.role == "admin":
         return session.exec(select(Conversation)).all()
-    else:
-        return session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
-
+    return session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
 
 @app.post("/conversations/{conversation_id}/reply")
-def reply(conversation_id: int, payload: dict, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+async def reply(conversation_id: int, payload: MessagePayload, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     conversation = session.get(Conversation, conversation_id)
+
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
+    if conversation.assigned_to != user.id:
+        raise HTTPException(status_code=403, detail="Você não está atribuído a essa conversa")
 
     message = Message(
         conversation_id=conversation_id,
         sender="agent",
-        content=payload["message"]
+        content=payload.message
     )
     session.add(message)
     session.commit()
 
     # envia via WhatsApp (remova se não usar Twilio)
-    send_whatsapp_message(conversation.customer_number, payload["message"])
+    try:
+        send_whatsapp_message(conversation.customer_number, payload.message)
+    except Exception as e:
+        print(f"Erro ao enviar mensagem via WhatsApp: {e}")
 
-    asyncio.create_task(manager.broadcast({
+
+    await manager.broadcast({
         "conversation_id": conversation_id,
         "sender": "agent",
         "message": message.content
-    }))
-
+    })
     return {"msg": "Mensagem enviada"}
 
 
@@ -238,7 +254,7 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
         "conversation_id": conversation.id,
         "sender": "customer",
         "message": message,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": msg.timestamp.isoformat()
     })
 
     return {"status": "received"}
@@ -268,6 +284,28 @@ def create_fake(session: Session = Depends(get_session)):
     return {"id": new.id}
 
 
+@app.post("/conversations")
+def create_conversation(data: ConversationCreate, user=Depends(get_current_user), session: Session = Depends(get_session)):
+    conversation = Conversation(
+        customer_number=data.customer_number,
+        status="pending",
+    )
+
+    session.add(conversation)
+    session.commit()
+    session.refresh(conversation)
+
+    message = Message(
+        conversation_id=conversation.id,
+        sender="customer",
+        content=data.initial_message,
+        timestamp=datetime.utcnow()
+    )
+    session.add(message)
+    session.commit()
+
+    return {"id": conversation.id, "message": "Conversa criada"}
+
 @app.get("/conversations/{conversation_id}/messages")
 def get_messages(conversation_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     conversation = session.get(Conversation, conversation_id)
@@ -288,16 +326,27 @@ def get_my_conversations(session: Session = Depends(get_session), user: User = D
         select(Conversation).where(Conversation.assigned_to == user.id)
     ).all()
 
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
-    await websocket.accept()
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Token inválido")
+
+        with Session(engine) as session:
+            user = session.exec(select(User).where(User.email == email)).first()
+            if not user:
+                await websocket.send_json({"error": "Usuário inválido"})
+                await websocket.close(code=1008)
+                return
     except JWTError:
         await websocket.send_json({"error": "Token inválido"})
-        await websocket.close()
+        await websocket.close(code=1008)
         return
-    
+
+    await websocket.accept()
     await manager.connect(websocket)
     try:
         while True:
