@@ -80,7 +80,7 @@ class ConnectionManager:
         self.active_connections: List[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
-        #await websocket.accept()
+        await websocket.accept()
         self.active_connections.append(websocket)
 
     def disconnect(self, websocket: WebSocket):
@@ -208,9 +208,11 @@ async def reply(conversation_id: int, payload: MessagePayload, session: Session 
 
 
     await manager.broadcast({
+        "id": message.id,
         "conversation_id": conversation_id,
         "sender": "agent",
-        "message": message.content
+        "message": message.content,
+        "timestamp": message.timestamp.isoformat()
     })
     return {"msg": "Mensagem enviada"}
 
@@ -251,6 +253,7 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
     session.commit()
 
     await manager.broadcast({
+        "id": msg.id,
         "conversation_id": conversation.id,
         "sender": "customer",
         "message": message,
@@ -333,25 +336,28 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
         if not email:
-            raise HTTPException(status_code=401, detail="Token inválido")
+            await websocket.close(code=1008)
+            return
+            #raise HTTPException(status_code=401, detail="Token inválido")
 
         with Session(engine) as session:
             user = session.exec(select(User).where(User.email == email)).first()
             if not user:
-                await websocket.send_json({"error": "Usuário inválido"})
+                #await websocket.send_json({"error": "Usuário inválido"})
                 await websocket.close(code=1008)
                 return
     except JWTError:
-        await websocket.send_json({"error": "Token inválido"})
+       # await websocket.send_json({"error": "Token inválido"})
         await websocket.close(code=1008)
         return
 
-    await websocket.accept()
+   # await websocket.accept()
     await manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_json()
-            await manager.broadcast(data)
+           # data = await websocket.receive_json()
+            #await manager.broadcast(data)
+            await asyncio.sleep(1000)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
        
