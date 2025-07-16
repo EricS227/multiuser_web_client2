@@ -139,13 +139,13 @@
       <div id="chat">
         <div id="chat-messages"></div>
         <div class="chat-input">
-          <input type="text" id="message-input" placeholder="Digite sua mensagem...">
-          <button onclick="sendMessage()">Enviar</button>
-          <button onclick="endConversation()">Encerrar</button>
-          <button onclick="criarConversaTeste()">Criar conversa teste</button>
-          <button id="logout" onclick="logout()" style="position: absolute; top: 10px; right: 10px;">
-            Logout
-          </button>
+            <input type="text" id="message-input" placeholder="Digite sua mensagem...">
+            <button id="send-button" onclick="sendMessage()">Enviar</button>
+            <button onclick="endConversation()">Encerrar</button>
+            <button onclick="criarConversaTeste()">Criar conversa teste</button>
+            <button id="logout" onclick="logout()" style="position: absolute; top: 10px; right: 10px;">
+              Logout
+            </button>
         </div>
       </div>
     </section>
@@ -177,13 +177,18 @@
           const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const msgClass = data.sender === "agent" ? "message agent" : "message";
 
-          chat.innerHTML += `
-            <div class="${msgClass}">
-              <span class="sender"><strong>${data.sender}:</strong> ${data.message}</span><br>
-              <small style="font-size: 10px; color: gray;">${timeStr}</small>
-            </div>
+          const messageDiv = document.createElement("div");
+          messageDiv.className = msgClass;
+          messageDiv.innerHTML = `
+            <span class="sender"><strong>${data.sender}:</strong> ${data.message}</span><br>
+            <small style="font-size: 10px; color: gray;">${timeStr}</small>
           `;
+          
+          chat.appendChild(messageDiv);
+
+          removeMensagensDuplicadas();
           chat.scrollTop = chat.scrollHeight;
+
         }
       };
 
@@ -223,6 +228,8 @@
             <p><strong>Status:</strong> ${c.status}</p>
           </div>
         `).join("");
+        
+        removeMensagensDuplicadas();
       } catch (error) {
         console.error("Erro ao carregar minhas conversas:", error);
       }
@@ -298,6 +305,9 @@
           `;
         }).join("");
 
+
+        removeMensagensDuplicadas();
+
         chat.scrollTop = chat.scrollHeight;
       } catch (error) {
         console.error("Erro ao carregar mensagens:", error);
@@ -309,14 +319,27 @@
       window.location.href = "index.html";
     }
 
+    let isSending = false;
+
+
     async function sendMessage() {
+      if (isSending) return;
+      isSending = true;
+
+      console.log("sendMessage Chamada");
+
       const input = document.getElementById("message-input");
       const content = input.value.trim();
 
       if (!content || !currentConversationId) {
         console.warn("Mensagem vazia ou conversa não selecionada");
+        isSending = false;
         return;
       }
+
+      input.disabled = true;
+      const sendButton = document.querySelector('button[onclick="sendMessage()"]');
+      if (sendButton) sendButton.disabled = true;
 
       try {
         const res = await fetch(`/conversations/${currentConversationId}/reply`, {
@@ -329,7 +352,9 @@
         });
 
         if (!res.ok) {
+          const errorText = await res.text();
           console.error("Erro na resposta da API:", res.status, await res.text());
+          alert("Erro ao enviar mensagem: " + errorText);
           return;
         }
 
@@ -337,17 +362,25 @@
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-        chat.innerHTML += `
-          <div class="message agent">
-            <span class="sender"><strong>agent:</strong> ${content}</span><br>
-            <small style="font-size: 10px; color: gray;">${timeStr}</small>
-          </div>
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "message agent";
+        messageDiv.innerHTML = `
+        <span class="sender"><strong>agent:</strong> ${content}</span><br>
+        <small style="font-size: 10px; color: gray;">${timeStr}</small>
         `;
-
+        chat.appendChild(messageDiv);
+        
         chat.scrollTop = chat.scrollHeight;
         input.value = "";
+
+        highlightSelected(currentConversationId)
       } catch (error) {
         console.error("Erro ao enviar mensagem:", error);
+        alert("Erro ao enviar mensagem", error);
+      } finally {
+        isSending = false;
+        input.disabled = false;
+        if (sendButton) sendButton.disabled = false;
       }
     }
 
@@ -381,6 +414,32 @@
     }
 
 
+    function removeMensagensDuplicadas() {
+      const chat = document.getElementById("chat-messages");
+      const seen = new Set();
+      const messages = Array.from(chat.children);
+      const toRemove = [];
+
+      messages.forEach(msg => {
+        const senderElem = msg.querySelector(".sender");
+        if (!senderElem) return;
+
+        const fullText = senderElem.innerText.trim();
+
+        const messageText = fullText.includes(":") ? fullText.split(":").slice(1).join(":").trim() : fullText;
+
+        const key = messageText;
+
+        if (seen.has(key)) {
+          toRemove.push(msg);
+        } else {
+          seen.add(key);
+        }
+      });
+
+      toRemove.forEach(msg => msg.remove());
+    }
+
     async function criarConversaTeste() {
       try {
         const res = await fetch("/conversations", {
@@ -409,11 +468,15 @@
       }
 
 
-      document.getElementById("message-input").addEventListener("keypress", (e) => {
+      document.getElementById("message-input").addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
+          e.preventDefault();
           sendMessage();
         }
       });
+
+
+    
 
     // Inicialização
     connectWebSocket();
