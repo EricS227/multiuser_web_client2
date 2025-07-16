@@ -33,7 +33,7 @@ DATABASE_URL = "sqlite:///./chatwoot_clone.db"
 engine = create_engine(DATABASE_URL, echo=True)
 
 # Autenticação
-SECRET_KEY = "supersecretkey"
+SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -166,6 +166,22 @@ def send_whatsapp_message(to_number: str, message: str):
     except Exception as e:
         print(f"Erro ao enviar mensagem via WhatsApp: {e}")
 
+def get_least_busy_agent(session: Session):
+    agents = session.exec(select(User).where(User.role == "agent")).all()
+    if not agents:
+        return None
+    
+    agent_loads = {
+        agent.id: session.exec(
+            select(Conversation).where(
+                Conversation.assigned_to == agent.id,
+                Conversation.status == "pending"
+            )
+        ).count()
+        for agent in agents
+    }
+    sorted_agents = sorted(agent_loads.items(), key=lambda item: item[1])
+    return session.get(User, sorted_agents[0][0]) if sorted_agents else None
 
 # Rotas
 @app.post("/login")
@@ -182,6 +198,31 @@ def get_conversations(session: Session = Depends(get_session), user: User = Depe
     if user.role == "admin":
         return session.exec(select(Conversation)).all()
     return session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
+
+
+
+@app.get("/agents/status")
+def get_agents_status(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem acessar")
+    
+    agents = session.exec(select(User).where(User.role == "agent")).all()
+    status = []
+
+    for agent in agents:
+        count = session.exec(
+            select(Conversation).where(
+                Conversation.assigned_to == agent.id,
+                Conversation.status == "pending"
+            )
+        ).count()
+        status.append({
+            "agent_id": agent.id,
+            "name": agent.name,
+            "email": agent.email,
+            "pending_conversations": count
+        })
+    return status
 
 @app.post("/conversations/{conversation_id}/reply")
 async def reply(conversation_id: int, payload: MessagePayload, session: Session = Depends(get_session), user: User = Depends(get_current_user)):
@@ -239,13 +280,18 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
 
     conversation = session.exec(select(Conversation).where(Conversation.customer_number == number)).first()
     if not conversation:
-        conversation = Conversation(customer_number=number)
+        agent = get_least_busy_agent(session)
+        conversation = Conversation(
+            customer_number=number,
+            assigned_to=agent.id if agent else None,
+            status="pending"
+        )
         session.add(conversation)
         session.commit()
         session.refresh(conversation)
 
     msg = Message(
-        conversation_id=conversation.id,
+        conversation_id = conversation.id,
         sender="customer",
         content=message
     )
@@ -261,7 +307,6 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
     })
 
     return {"status": "received"}
-
 
 
 @app.post("/conversations/{conversation_id}/assign")
@@ -289,9 +334,13 @@ def create_fake(session: Session = Depends(get_session)):
 
 @app.post("/conversations")
 def create_conversation(data: ConversationCreate, user=Depends(get_current_user), session: Session = Depends(get_session)):
+    agent = get_least_busy_agent(session)
+
+
     conversation = Conversation(
         customer_number=data.customer_number,
         status="pending",
+        assigned_to=agent.id if agent else None
     )
 
     session.add(conversation)
@@ -315,7 +364,7 @@ def get_messages(conversation_id: int, session: Session = Depends(get_session), 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     
-    if conversation.assigned_to != user.id:
+    if user.role != "admin" and conversation.assigned_to != user.id:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
     messages = session.exec(
