@@ -119,6 +119,15 @@
       background: #c5cae9 !important;
       border-left: 4px solid #3f51b5;
     }
+
+    .conversation p {
+      margin: 4px 0;
+      font-size: 0.9em;
+    }
+    .conversation small {
+      font-size: 0.8em;
+      color: #555;
+    }
   </style>
 </head>
 <body>
@@ -156,6 +165,7 @@
     let token = localStorage.getItem("access_token");
     let currentConversationId = null;
     let ws = null;
+    //const timeStr = formatDate(m.timestamp);
 
     if (!token) {
       alert("Token ausente. Faça login novamente.");
@@ -226,6 +236,7 @@
           <div class="conversation" onclick="loadChat(${c.id})">
             <p><strong>Número:</strong> ${c.customer_number}</p>
             <p><strong>Status:</strong> ${c.status}</p>
+            <small>Iniciado em: ${new Date(c.created_at).toLocaleString()}</small>
           </div>
         `).join("");
         
@@ -255,6 +266,7 @@
             <div class="conversation" data-id="${c.id}" onclick="loadChat(${c.id})">
               <p><strong>Nome:</strong> ${c.customer_number}</p>
               <p><strong>Status:</strong> ${c.status}</p>
+              
             </div>
           `).join("");
       } catch (error) {
@@ -439,6 +451,15 @@
 
       toRemove.forEach(msg => msg.remove());
     }
+
+
+    function formatDate(isoDateStr) {
+      console.log("formatDate received:", isDateStr);
+      if (!isoDateStr) return "Data Inválida";
+      const date = new Date(isoDateStr);
+      if (isNaN(date)) return "Data inválida";
+      return date.toLocaleString('pt-Br', { dateStyle: 'short', timeStyle: 'short'});
+       }
 
     async function criarConversaTeste() {
       try {
