@@ -181,7 +181,7 @@
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.conversation_id === currentConversationId) {
+        if (!data.conversation_id || data.conversation_id !== currentConversationId) return; {
           const chat = document.getElementById("chat-messages");
           const time = data.timestamp ? new Date(data.timestamp) : new Date();
           const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -454,7 +454,7 @@
 
 
     function formatDate(isoDateStr) {
-      console.log("formatDate received:", isDateStr);
+      console.log("formatDate received:", isoDateStr);
       if (!isoDateStr) return "Data Inválida";
       const date = new Date(isoDateStr);
       if (isNaN(date)) return "Data inválida";
