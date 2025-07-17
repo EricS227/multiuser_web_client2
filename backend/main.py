@@ -9,7 +9,9 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from twilio.rest import Client
 from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
 from dotenv import load_dotenv 
+from datetime import timezone
 
 import os
 import asyncio
@@ -59,6 +61,8 @@ class Conversation(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_number: str
     assigned_to: Optional[int] = None
+    created_by: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     status: str = "pending"
 
 
@@ -112,13 +116,33 @@ SQLModel.metadata.create_all(engine)
 @app.on_event("startup")
 def create_admin_user():
     with Session(engine) as session:
-        existing = session.exec(select(User).where(User.email == "admin@test.com")).first()
-        if not existing:
-            user = User(email="admin@test.com", name="Admin", password_hash=hash_password("senha123"), role="admin")
-            session.add(user)
-            session.commit()
+        # Cria admin se não existir
+        admin = session.exec(select(User).where(User.email == "admin@test.com")).first()
+        if not admin:
+            admin_user = User(
+                email="admin@test.com",
+                name="Admin",
+                password_hash=hash_password("senha123"),
+                role="admin"
+            )
+            session.add(admin_user)  # deve estar dentro do if
 
-            
+        # Cria user padrão se não existir
+        standard = session.exec(select(User).where(User.email == "user@test.com")).first()
+        if not standard:
+            standard_user = User(
+                email="user@test.com",
+                name="User",
+                password_hash=hash_password("senha1234"),
+                role="user"
+            )
+            session.add(standard_user)  # também dentro do if
+
+        session.commit()
+     
+
+
+
 def get_session():
     session = Session(engine)
     try:
@@ -277,6 +301,9 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
 
     if not number or not message:
         raise HTTPException(status_code=400, detail="Dados incompletos")
+    
+    if number.startswith("whatsapp:"):
+        number = number.replace("whatsapp:", "")
 
     conversation = session.exec(select(Conversation).where(Conversation.customer_number == number)).first()
     if not conversation:
@@ -284,6 +311,7 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
         conversation = Conversation(
             customer_number=number,
             assigned_to=agent.id if agent else None,
+            created_by=agent.id if agent else None,
             status="pending"
         )
         session.add(conversation)
@@ -293,7 +321,8 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
     msg = Message(
         conversation_id = conversation.id,
         sender="customer",
-        content=message
+        content=message,
+        timestamp=datetime.utcnow().replace(tzinfo=timezone.utc)
     )
     session.add(msg)
     session.commit()
@@ -334,13 +363,14 @@ def create_fake(session: Session = Depends(get_session)):
 
 @app.post("/conversations")
 def create_conversation(data: ConversationCreate, user=Depends(get_current_user), session: Session = Depends(get_session)):
-    agent = get_least_busy_agent(session)
+    #agent = get_least_busy_agent(session)
 
 
     conversation = Conversation(
         customer_number=data.customer_number,
         status="pending",
-        assigned_to=agent.id if agent else None
+        #assigned_to=None,
+        created_by=user.id
     )
 
     session.add(conversation)
@@ -364,7 +394,7 @@ def get_messages(conversation_id: int, session: Session = Depends(get_session), 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
     
-    if user.role != "admin" and conversation.assigned_to != user.id:
+    if user.role != "admin" and conversation.assigned_to != user.id and conversation.created_by != user.id:
         raise HTTPException(status_code=403, detail="Acesso negado")
     
     messages = session.exec(
@@ -374,10 +404,14 @@ def get_messages(conversation_id: int, session: Session = Depends(get_session), 
 
 @app.get("/my-conversations")
 def get_my_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
-    return session.exec(
-        select(Conversation).where(Conversation.assigned_to == user.id)
-    ).all()
-
+    if user.role == "user":
+        return session.exec(
+            select(Conversation).where(Conversation.created_by == user.id)
+        ).all()
+    else:
+        return session.exec(
+            select(Conversation).where(Conversation.assigned_to == user.id)
+        ).all()
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):

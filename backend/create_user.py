@@ -11,3 +11,15 @@ with Session(engine) as session:
     session.add(user)
     session.commit()
     print("Usuário criado com sucesso")
+
+with Session(engine) as session:
+    user = User (
+        email="user@teste.com",
+        name="User",
+        password_hash=hash_password("1234567"),
+        role="user"
+    )
+    session.add(user)
+    session.commit()
+    print("Usuário criado com sucesso")
+
