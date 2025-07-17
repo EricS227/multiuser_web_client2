@@ -60,8 +60,8 @@ class User(SQLModel, table=True):
 class Conversation(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_number: str
-    assigned_to: Optional[int] = None
-    created_by: Optional[int] = None
+    assigned_to: str | None
+    created_by: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     status: str = "pending"
 
@@ -254,7 +254,7 @@ async def reply(conversation_id: int, payload: MessagePayload, session: Session 
 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
-    if conversation.assigned_to != user.id:
+    if str(conversation.assigned_to) != str(user.id):
         raise HTTPException(status_code=403, detail="Você não está atribuído a essa conversa")
 
     message = Message(
@@ -450,6 +450,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
    # await websocket.accept()
     #while True:
         #await websocket.receive_text()
+
 
 
 
