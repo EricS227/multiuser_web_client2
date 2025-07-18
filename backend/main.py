@@ -12,7 +12,10 @@ from pydantic import BaseModel
 from fastapi.encoders import jsonable_encoder
 from dotenv import load_dotenv 
 from datetime import timezone
+from sqlalchemy import create_engine, text, inspect
 
+
+import httpx
 import os
 import asyncio
 import uvicorn
@@ -60,9 +63,10 @@ class User(SQLModel, table=True):
 class Conversation(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_number: str
+    name: Optional[str] = None
     assigned_to: str | None
     created_by: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "pending"
 
 
@@ -71,7 +75,7 @@ class Message(SQLModel, table=True):
     conversation_id: int
     sender: str
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class ConversationCreate(BaseModel):
     customer_number: str
@@ -110,6 +114,19 @@ SQLModel.metadata.create_all(engine)
 
 
 
+@app.on_event("startup")
+def verificar_e_adicionar_coluna_name():
+    with engine.connect() as conn:
+        insp = inspect(conn)
+        columns = [col["name"] for col in insp.get_columns("conversation")]
+
+        if "name" not in columns:
+            print("Adicionando coluna 'name' à tabela conversation")
+            conn.execute(text("ALTER TABLE conversation ADD COLUMN name VARCHAR"))
+            conn.commit()
+#with engine.connect() as conn:
+   # conn.execute(text("ALTER TABLE conversation ADD COLUMN name VARCHAR"))
+    #conn.commit()
 
 
 # Utils
@@ -287,17 +304,61 @@ def end_conversation(conversation_id: int, db: Session = Depends(get_session), u
     conversation = db.get(Conversation, conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="conversation not found")
-    if conversation.assigned_to != user.id:
-        raise HTTPException(status_code=403, detail="Unauthorized")
     
-    conversation.status = "closed"
-    db.commit()
-    return {"detail": "Conversation ended"}
+    if user.role == "admin":
+        pass
+    else:
+        try:
+            assigned_to = int(conversation.assigned_to) if conversation.assigned_to else None
+        except (ValueError, TypeError):
+            assigned_to = None
+
+        if assigned_to != user.id:
+            raise HTTPException(status_code=403, detail="Você não está atribuído a essa conversa")
+    if conversation.status == "closed":
+        raise HTTPException(status_code=400, detail="Conversation already closed")
+    
+    try:
+        conversation.status = "closed"
+        db.commit()
+        return {"detail": "Conversation closed successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Error ending conversation")
+
+
+async def query_rasa_bot(message: str, sender_id: str):
+    try: 
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:5005/webhooks/rest/webhook",
+                json={"sender": sender_id, "message": message}
+            )
+            response.raise_for_status()
+            return response.json()
+    except Exception as e:
+        print("Erro ao consultar rasa:", e)
+        return None
+
+async def query_ollama_bot(message: str, model: str = "mistral"):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://localhost:11434/api/generate",
+                json={"model": model, "prompt": message, "stream": False}
+            )
+            response.raise_for_status()
+            return response.json().get("response", "").strip()
+    except Exception as e:
+        print("Erro ao consultar Ollama:", e)
+        return None
+  
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, session: Session = Depends(get_session)):
     payload = await request.json()
     number = payload.get("from")
     message = payload.get("message")
+    name = payload.get("name")
 
     if not number or not message:
         raise HTTPException(status_code=400, detail="Dados incompletos")
@@ -305,11 +366,39 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
     if number.startswith("whatsapp:"):
         number = number.replace("whatsapp:", "")
 
-    conversation = session.exec(select(Conversation).where(Conversation.customer_number == number)).first()
+    #consultar rasa
+    rasa_responses = await query_rasa_bot(message, number)
+    if rasa_responses:
+        for rasa_resp in rasa_responses:
+            text = rasa_resp.get("text")
+            if text and "encaminhar_para_humano" not in text.lower():
+                await manager.send_personal_message({
+                    "sender": "bot",
+                    "message": text,
+                    "conversation_id": None
+                }, number)
+                return {"status": "respondido pelo Rasa"}
+            
+    # consultar ollama
+
+    ollama_reply = await query_ollama_bot(message)
+    if ollama_reply and "falar com atendente" not in ollama_reply.lower():
+        await manager.send_personal_message({
+            "sender": "bot",
+            "message": ollama_reply,
+            "conversation_id": None
+        }, number)
+        return {"status": "responndido pelo Ollama"}
+    
+    conversation = session.exec(
+        select(Conversation).where(Conversation.customer_number == number)
+    ).first()
+
     if not conversation:
         agent = get_least_busy_agent(session)
         conversation = Conversation(
             customer_number=number,
+            name=name,
             assigned_to=agent.id if agent else None,
             created_by=agent.id if agent else None,
             status="pending"
@@ -319,13 +408,14 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
         session.refresh(conversation)
 
     msg = Message(
-        conversation_id = conversation.id,
+        conversation_id=conversation.id,
         sender="customer",
         content=message,
         timestamp=datetime.utcnow().replace(tzinfo=timezone.utc)
     )
     session.add(msg)
     session.commit()
+
 
     await manager.broadcast({
         "id": msg.id,
@@ -335,8 +425,7 @@ async def whatsapp_webhook(request: Request, session: Session = Depends(get_sess
         "timestamp": msg.timestamp.isoformat()
     })
 
-    return {"status": "received"}
-
+    return {"status": "encaminhado para operador"}
 
 @app.post("/conversations/{conversation_id}/assign")
 def assign_conversation(conversation_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
