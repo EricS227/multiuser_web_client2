@@ -130,6 +130,8 @@
     }
   </style>
 </head>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 <body>
   <header>
     <h1>Painel do Operador</h1>
@@ -168,7 +170,7 @@
     //const timeStr = formatDate(m.timestamp);
 
     if (!token) {
-      alert("Token ausente. Faça login novamente.");
+      showError("Token ausente. Faça login novamente.");
       window.location.href = "index.html";
     }
 
@@ -225,18 +227,24 @@
         });
 
         if (res.status === 401) {
-          alert("Sessão expirada. Faça login novamente.");
+          showError("Sessão expirada. Faça login novamente.");
           localStorage.removeItem("access_token");
           window.location.href = "index.html";
           return;
         }
 
+    
+
         const myData = await res.json();
+
+        const activeConversations = myData.filter(c => c.status === "pending");
+        
         document.getElementById("my-conversations").innerHTML = myData.map(c => `
           <div class="conversation" onclick="loadChat(${c.id})">
+            <p><strong>Nome:</strong> ${c.name ?? '(Sem nome)'}</p>
             <p><strong>Número:</strong> ${c.customer_number}</p>
             <p><strong>Status:</strong> ${c.status}</p>
-            <small>Iniciado em: ${new Date(c.created_at).toLocaleString()}</small>
+            <small>Iniciado em: ${new Date(c.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</small>
           </div>
         `).join("");
         
@@ -253,7 +261,7 @@
         });
 
         if (res.status === 401) {
-          alert("Sessão expirada. Faça login novamente.");
+          showError("Sessão expirada. Faça login novamente.");
           localStorage.removeItem("access_token");
           window.location.href = "index.html";
           return;
@@ -264,9 +272,9 @@
           .filter(c => c.status === "pending")
           .map(c => `
             <div class="conversation" data-id="${c.id}" onclick="loadChat(${c.id})">
-              <p><strong>Nome:</strong> ${c.customer_number}</p>
+              <p><strong>Nome:</strong> ${c.name ?? '(Sem nome)'}</p>
+              <p><strong>Número:</strong> ${c.customer_number}</p>
               <p><strong>Status:</strong> ${c.status}</p>
-              
             </div>
           `).join("");
       } catch (error) {
@@ -286,7 +294,7 @@
 
         if (!assignRes.ok) {
           console.error("Erro ao atribuir conversa:", assignRes.status);
-          alert("Erro ao atribuir conversa.");
+          showError("Erro ao atribuir conversa.");
           return;
         }
 
@@ -366,7 +374,7 @@
         if (!res.ok) {
           const errorText = await res.text();
           console.error("Erro na resposta da API:", res.status, await res.text());
-          alert("Erro ao enviar mensagem: " + errorText);
+          showError("Erro ao enviar mensagem: " + errorText);
           return;
         }
 
@@ -388,7 +396,7 @@
         highlightSelected(currentConversationId)
       } catch (error) {
         console.error("Erro ao enviar mensagem:", error);
-        alert("Erro ao enviar mensagem", error);
+        showError("Erro ao enviar mensagem", error);
       } finally {
         isSending = false;
         input.disabled = false;
@@ -400,28 +408,37 @@
     async function endConversation() {
       console.log("endConversation called", {currentConversationId});
       if (!currentConversationId) {
-        alert("Nenhuma conversa selecionada para encerrar.");
+        showError("Nenhuma conversa selecionada para encerrar.");
         return;
       }
 
       try {
+        console.log("Enviando requisição para encerrar conversa:", currentConversationId);
+
         const res = await fetch(`/conversations/${currentConversationId}/end`, {
           method: "POST",
-          headers: {Authorization:  `Bearer ${token}`}
+          headers: {Authorization:  `Bearer ${token}`, "Content-Type": "application/json"},
         });
 
+        console.log("Resposta recebida:", res.status);
+
         if (!res.ok) {
-          console.error("Erro na resposta da API:", res.status, await res.text());
-          alert("Erro ao encerrar conversa: " + res.status);
+          const errorText = await res.text();
+          console.error("Erro na resposta da API:", res.status, errorText);
+          showError("Erro ao encerrar conversa: " + res.status + " - " + errorText);
           return;
         }
 
-        alert("Conversa encerrada com sucesso.");
+        const result = await res.json();
+        console.log("Conversa encerrada com sucesso:", result);
+
+        showToast("Conversa encerrada com sucesso.");
         document.getElementById("chat-messages").innerHTML = "";
         currentConversationId = null;
         fetchMyConversations();
         }  catch (error) {
         console.error("Erro ao encerrar conversa:", error);
+        showError("Erro de conexão: " + error.message);
       }
     }
 
@@ -454,13 +471,16 @@
 
 
     function formatDate(isoDateStr) {
-      console.log("formatDate received:", isoDateStr);
-      if (!isoDateStr) return "Data Inválida";
-      const date = new Date(isoDateStr);
-      if (isNaN(date)) return "Data inválida";
-      return date.toLocaleString('pt-Br', { dateStyle: 'short', timeStyle: 'short'});
-       }
-
+      try {
+        if (!isoDateStr) return "Data Inválida";
+        const date = new Date(isoDateStr);
+        if (isNaN(date)) return "Data Inválida";
+        return date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+      } catch {
+        return "Data inválida";
+      }
+    }
+    
     async function criarConversaTeste() {
       try {
         const res = await fetch("/conversations", {
@@ -480,7 +500,7 @@
           return;
         }
 
-        alert("Conversa teste criada");
+        showToast("Conversa teste criada");
         fetchAllConversations();
         fetchMyConversations();
         } catch (error) {
@@ -496,6 +516,35 @@
         }
       });
 
+
+      function showSuccess(message) {
+        Swal.fire({
+          icon: 'success',
+          title: message,
+          showConfirmButton: false,
+          timer: 2000
+        });
+      }
+
+      function showError(message) {
+        Swal.fire({
+          icon:'error',
+          title: 'Erro',
+          text: message
+        });
+      }
+
+      function showToast(message, type="success") {
+        Swal.fire({
+          toast: true,
+          postion: 'top-end',
+          icon: type,
+          title: message,
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true
+        });
+      }
 
     
 
