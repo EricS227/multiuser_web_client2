@@ -1,7 +1,9 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Request, Query, Form
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.templating import Jinja2Templates
 from sqlmodel import Field, SQLModel, Session, create_engine, select
 from datetime import datetime, timedelta
 from typing import Optional, List
@@ -12,13 +14,15 @@ from pydantic import BaseModel
 from fastapi.encoders import jsonable_encoder
 from dotenv import load_dotenv 
 from datetime import timezone
-from sqlalchemy import create_engine, text, inspect
+from sqlalchemy import text, inspect
+from pytz import timezone as tz
 
-
+import bcrypt
 import httpx
 import os
 import asyncio
 import uvicorn
+import requests
 
 load_dotenv()
 
@@ -37,6 +41,26 @@ app.add_middleware(
 DATABASE_URL = "sqlite:///./chatwoot_clone.db"
 engine = create_engine(DATABASE_URL, echo=True)
 
+
+
+@app.get("/", response_class=HTMLResponse)
+
+def form_html():
+    return """
+     <html>
+        <body>
+            <h2>Cadastro de Usuário</h2>
+            <form action="/cadastrar" method="post">
+                Nome: <input type="text" name="nome"><br>
+                Email: <input type="email" name="email"><br>
+                Senha: <input type="password" name="senha"><br>
+                <input type="submit" value="Cadastrar">
+            </form>
+        </body>
+    </html>
+    
+    """
+
 # Autenticação
 SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret")
 ALGORITHM = "HS256"
@@ -47,7 +71,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 # Twilio (opcional, pode remover se não for usar)
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID") or "SEU_ACCOUNT_SID"
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN") or "SEU_AUTH_TOKEN"
-TWILIO_WHATSAPP_FROM = "whatsapp:+14155238886"
+TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM")
+TO = 'whatsapp:+5531996950370'
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 
@@ -81,6 +106,19 @@ class ConversationCreate(BaseModel):
     customer_number: str
     initial_message: str
 
+class Usuario(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    nome: str
+    email: str
+    senha: str
+
+class UsuarioCreate(BaseModel):
+    nome: str
+    email: str
+    senha: str
+
+
+
 
 # WebSocket Manager
 class ConnectionManager:
@@ -94,6 +132,16 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: dict, recipienet_number: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json({
+                    "to": recipienet_number,
+                    **message
+                })
+            except Exception:
+                self.disconnect(connection)
 
     async def broadcast(self, message: dict):
         for connection in self.active_connections:
@@ -157,7 +205,23 @@ def create_admin_user():
 
         session.commit()
      
+@app.post("/send_welcome_message/{to_number}")
+def enviar_mensagem(tipo: str, to_number: str, nome: str = ""):
+    if tipo == "boas_vindas":
+        mensagem = f"Olá {nome}, um operador entrará em contato com você em breve"
+    elif tipo == "encerramento":
+        mensagem = f"Olá {nome}, sua conversa foi finalizada. obrigado por entrar em contato"
+    elif tipo == "atribuição":
+        mensagem = f"Nova conversa atribuída a você, {nome}."
+    else:
+        mensagem = "Mensagem automática do sistema."
 
+    return send_whatsapp_message(to_number, mensagem)
+
+
+def get_db():
+    with Session(engine) as session:
+        yield session
 
 
 def get_session():
@@ -195,6 +259,24 @@ def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Dep
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
+
+def get_ngrok_url():
+    try:
+        response = requests.get('http://localhost:4040/api/tunnels')
+        tunnels = response.json()['tunnels']
+        for t in tunnels:
+            if t['proto'] == 'https':
+                return t['public_url']
+    except Exception as e:
+        print("Erro ao obter URL do ngrok:", e)
+        return None
+
+url = get_ngrok_url()
+if url:
+    print(f"URL pública do ngrok: {url}/webhook/whatsapp")
+else:
+    print("Não foi possível obter a URL pública do ngrok")
+
 # Envia mensagem pelo WhatsApp (opcional)
 def send_whatsapp_message(to_number: str, message: str):
     try:
@@ -203,9 +285,11 @@ def send_whatsapp_message(to_number: str, message: str):
             from_=TWILIO_WHATSAPP_FROM,
             to=f"whatsapp:{to_number}"
         )
+        print(F"Mensagem enviaad para {to_number}: {msg.sid}")
         return msg.sid
     except Exception as e:
         print(f"Erro ao enviar mensagem via WhatsApp: {e}")
+        return None
 
 def get_least_busy_agent(session: Session):
     agents = session.exec(select(User).where(User.role == "agent")).all()
@@ -225,6 +309,16 @@ def get_least_busy_agent(session: Session):
     return session.get(User, sorted_agents[0][0]) if sorted_agents else None
 
 # Rotas
+
+@app.post("/cadastrar")
+async def cadastrar(usuario: UsuarioCreate, db: Session = Depends(get_db)):
+    novo_usuario = Usuario.from_orm(usuario)
+    db.add(novo_usuario)
+    db.commit()
+    db.refresh(novo_usuario)
+    return f"Usuário {novo_usuario.nome} cadastrado com sucesso!"
+
+
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
     user = session.exec(select(User).where(User.email == form_data.username)).first()
@@ -355,77 +449,117 @@ async def query_ollama_bot(message: str, model: str = "mistral"):
   
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, session: Session = Depends(get_session)):
-    payload = await request.json()
-    number = payload.get("from")
-    message = payload.get("message")
-    name = payload.get("name")
+    try:
+        # Tentar receber dados como JSON primeiro
+        try:
+            payload = await request.json()
+            from_number = payload.get("from", "").replace("whatsapp:", "")
+            message_body = payload.get("message", "")
+            profile_name = payload.get("name", "Cliente")
+        except:
+            # Se falhar, tentar como form data (formato padrão do Twilio)
+            form_data = await request.form()
+            from_number = form_data.get("From", "").replace("whatsapp:", "")
+            message_body = form_data.get("Body", "")
+            profile_name = form_data.get("ProfileName", "Cliente")
 
-    if not number or not message:
-        raise HTTPException(status_code=400, detail="Dados incompletos")
-    
-    if number.startswith("whatsapp:"):
-        number = number.replace("whatsapp:", "")
+        print(f"Mensagem recebida de {from_number}: {message_body}")
 
-    #consultar rasa
-    rasa_responses = await query_rasa_bot(message, number)
-    if rasa_responses:
-        for rasa_resp in rasa_responses:
-            text = rasa_resp.get("text")
-            if text and "encaminhar_para_humano" not in text.lower():
-                await manager.send_personal_message({
-                    "sender": "bot",
-                    "message": text,
-                    "conversation_id": None
-                }, number)
-                return {"status": "respondido pelo Rasa"}
+        if not from_number or not message_body:
+            raise HTTPException(status_code=400, detail="Dados incompletos")
+
+        # PRIMEIRA ETAPA: Tentar resposta automática com bots
+        
+        # Consultar Rasa
+        rasa_responses = await query_rasa_bot(message_body, from_number)
+        if rasa_responses:
+            for rasa_resp in rasa_responses:
+                text = rasa_resp.get("text")
+                if text and "encaminhar_para_humano" not in text.lower():
+                    # Resposta automática do Rasa - envia direto via WhatsApp
+                    send_whatsapp_message(from_number, text)
+                    
+                    # Notifica interface (opcional, para histórico)
+                    await manager.send_personal_message({
+                        "sender": "bot",
+                        "message": text,
+                        "conversation_id": None,
+                        "customer_number": from_number
+                    }, from_number)
+                    
+                    return {"status": "respondido pelo Rasa"}
+
+        # Consultar Ollama
+        ollama_reply = await query_ollama_bot(message_body)
+        if ollama_reply and "falar com atendente" not in ollama_reply.lower():
+            # Resposta automática do Ollama - envia direto via WhatsApp
+            send_whatsapp_message(from_number, ollama_reply)
             
-    # consultar ollama
+            # Notifica interface (opcional, para histórico)
+            await manager.send_personal_message({
+                "sender": "bot",
+                "message": ollama_reply,
+                "conversation_id": None,
+                "customer_number": from_number
+            }, from_number)
+            
+            return {"status": "respondido pelo Ollama"}
 
-    ollama_reply = await query_ollama_bot(message)
-    if ollama_reply and "falar com atendente" not in ollama_reply.lower():
-        await manager.send_personal_message({
-            "sender": "bot",
-            "message": ollama_reply,
-            "conversation_id": None
-        }, number)
-        return {"status": "responndido pelo Ollama"}
-    
-    conversation = session.exec(
-        select(Conversation).where(Conversation.customer_number == number)
-    ).first()
+        # SEGUNDA ETAPA: Se bots não responderam, encaminhar para agente
+        
+        # Verificar se já existe conversa ativa
+        conversation = session.exec(
+            select(Conversation).where(
+                Conversation.customer_number == from_number,
+                Conversation.status == "pending"
+            )
+        ).first()
 
-    if not conversation:
-        agent = get_least_busy_agent(session)
-        conversation = Conversation(
-            customer_number=number,
-            name=name,
-            assigned_to=agent.id if agent else None,
-            created_by=agent.id if agent else None,
-            status="pending"
+        # Se não existe conversa ativa, criar uma nova
+        if not conversation:
+            agent = get_least_busy_agent(session)
+            conversation = Conversation(
+                customer_number=from_number,
+                name=profile_name,
+                assigned_to=agent.id if agent else None,
+                created_by=agent.id if agent else None,
+                status="pending",
+            )
+            session.add(conversation)
+            session.commit()
+            session.refresh(conversation)
+
+            # Enviar mensagem de boas-vindas apenas para conversas novas
+            try:
+                send_whatsapp_message(from_number, f"Olá {profile_name}, um operador entrará em contato com você em breve.")
+            except Exception as e:
+                print(f"Erro ao enviar mensagem de boas-vindas: {e}")
+
+        # Salvar mensagem do cliente no banco
+        msg = Message(
+            conversation_id=conversation.id,
+            sender="customer",
+            content=message_body
         )
-        session.add(conversation)
+        session.add(msg)
         session.commit()
-        session.refresh(conversation)
 
-    msg = Message(
-        conversation_id=conversation.id,
-        sender="customer",
-        content=message,
-        timestamp=datetime.utcnow().replace(tzinfo=timezone.utc)
-    )
-    session.add(msg)
-    session.commit()
+        # Notificar agentes via WebSocket
+        await manager.broadcast({
+            "id": msg.id,
+            "conversation_id": conversation.id,
+            "sender": "customer",
+            "message": message_body,
+            "timestamp": msg.timestamp.isoformat(),
+            "customer_name": profile_name,
+            "customer_number": from_number
+        })
 
+        return {"status": "encaminhado para operador"}
 
-    await manager.broadcast({
-        "id": msg.id,
-        "conversation_id": conversation.id,
-        "sender": "customer",
-        "message": message,
-        "timestamp": msg.timestamp.isoformat()
-    })
-
-    return {"status": "encaminhado para operador"}
+    except Exception as e:
+        print(f"Erro no webhook WhatsApp: {e}")
+        return {"status": "erro", "message": str(e)}
 
 @app.post("/conversations/{conversation_id}/assign")
 def assign_conversation(conversation_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
