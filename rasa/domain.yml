@@ -1,0 +1,25 @@
+
+#rasa/domain.yml
+
+version: "3.1"
+
+intents:
+  - saudacao
+  - despedida
+  - duvida_produto
+  - fora_do_escopo
+
+
+responses:
+  utter_saudacao:
+    - text: "Olá, como posso ajudar você hoje?"
+  utter_despedida:
+    - text: "Até logo, caso precise estou aqui"
+  utter_duvida_produto:
+    - text: "Claro, qual produto gostaria de saber mais?"
+  utter_default:
+    - text: "Desculpe, não entendi. Pode reformular sua pergunta?"
+  
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true
