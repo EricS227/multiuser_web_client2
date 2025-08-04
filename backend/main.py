@@ -7,7 +7,8 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import Field, SQLModel, Session, create_engine, select
 from datetime import datetime, timedelta
 from typing import Optional, List
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError, DecodeError
 from passlib.context import CryptContext
 from twilio.rest import Client
 from pydantic import BaseModel
@@ -46,20 +47,238 @@ engine = create_engine(DATABASE_URL, echo=True)
 @app.get("/", response_class=HTMLResponse)
 
 def form_html():
-    return """
-     <html>
-        <body>
-            <h2>Cadastro de Usuário</h2>
-            <form action="/cadastrar" method="post">
-                Nome: <input type="text" name="nome"><br>
-                Email: <input type="email" name="email"><br>
-                Senha: <input type="password" name="senha"><br>
-                <input type="submit" value="Cadastrar">
-            </form>
-        </body>
-    </html>
-    
+     return """
+    <!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cadastro</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f1f2f7;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+            max-width: 400px;
+            width: 100%;
+            margin: 20px;
+        }
+
+        h2 {
+            color: #4338ca;
+            text-align: center;
+            margin-bottom: 2rem;
+            font-weight: 600;
+        }
+        
+        form {
+            margin-bottom: 20px;
+        }
+        
+        input[type="text"], input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
+            outline: none;
+            border-color: #4338ca;
+            box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.1);
+        }
+        
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #4338ca;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #3730a3;
+        }
+        
+        .secondary-btn {
+            background-color: #6c757d;
+        }
+        
+        .secondary-btn:hover {
+            background-color: #545b62;
+        }
+        
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        .success-message {
+            color: #155724;
+            padding: 12px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        
+        .error-message {
+            color: #721c24;
+            padding: 12px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+
+        .loading {
+            text-align: center;
+            color: #4338ca;
+            font-size: 14px;
+            padding: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #374151;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Cadastro de Usuário</h2>
+        
+        <form id="cadastroForm">
+            <div class="form-group">
+                <label for="nome">Nome completo</label>
+                <input type="text" id="nome" name="nome" placeholder="Digite seu nome" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">E-mail</label>
+                <input type="email" id="email" name="email" placeholder="Digite seu e-mail" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="senha">Senha</label>
+                <input type="password" id="senha" name="senha" placeholder="Digite sua senha" required>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" id="submitBtn">Cadastrar</button>
+            </div>
+        </form>
+
+        <button class="secondary-btn" onclick="window.location.href='index.html'">
+            Voltar para Login
+        </button>
+
+        <div id="mensagem"></div>
+    </div>
+
+    <script>
+        document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const mensagemDiv = document.getElementById('mensagem');
+            
+            // Desabilita o botão e mostra loading
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Cadastrando...';
+            mensagemDiv.innerHTML = '<div class="loading">Processando...</div>';
+            
+            const formData = new FormData(e.target);
+            
+            try {
+                const res = await fetch('/cadastrar', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (res.ok) {
+                    const result = await res.json();
+                    
+                    mensagemDiv.innerHTML = 
+                        '<div class="success-message">' + result.message + '</div>';
+                    
+                    document.getElementById('cadastroForm').reset();
+                    
+                    // Redireciona após 2 segundos
+                    setTimeout(() => {
+                        window.location.href = 'index.html';
+                    }, 2000);
+                    
+                } else {
+                    const error = await res.json();
+                    let errorMessage = 'Erro no cadastro';
+                    
+                    if (error.detail) {
+                        if (typeof error.detail === 'string') {
+                            errorMessage = error.detail;
+                        } else if (Array.isArray(error.detail)) {
+                            errorMessage = error.detail.map(e => e.msg).join(', ');
+                        }
+                    }
+                    
+                    mensagemDiv.innerHTML =
+                        '<div class="error-message">' + errorMessage + '</div>';
+                }
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                mensagemDiv.innerHTML =
+                    '<div class="error-message">Erro de conexão. Tente novamente.</div>';
+            } finally {
+                // Reabilita o botão
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Cadastrar';
+            }
+        });
+    </script>
+</body>
+</html>
     """
+
 
 # Autenticação
 SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret")
@@ -255,7 +474,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Dep
         if user is None:
             raise HTTPException(status_code=401, detail="Usuário não encontrado")
         return user
-    except JWTError:
+    except (InvalidTokenError, DecodeError):
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
@@ -276,6 +495,9 @@ if url:
     print(f"URL pública do ngrok: {url}/webhook/whatsapp")
 else:
     print("Não foi possível obter a URL pública do ngrok")
+
+
+
 
 # Envia mensagem pelo WhatsApp (opcional)
 def send_whatsapp_message(to_number: str, message: str):
@@ -308,15 +530,52 @@ def get_least_busy_agent(session: Session):
     sorted_agents = sorted(agent_loads.items(), key=lambda item: item[1])
     return session.get(User, sorted_agents[0][0]) if sorted_agents else None
 
+def chat_with_bot(message):
+    response = requests.post('http://localhost:5005/webhooks/rest/webhook', json={"sender": "user", "message": message})
+    return response.json()
+
+bot_response = chat_with_bot("Olá")
+print(bot_response)
+
 # Rotas
 
 @app.post("/cadastrar")
-async def cadastrar(usuario: UsuarioCreate, db: Session = Depends(get_db)):
-    novo_usuario = Usuario.from_orm(usuario)
-    db.add(novo_usuario)
-    db.commit()
-    db.refresh(novo_usuario)
-    return f"Usuário {novo_usuario.nome} cadastrado com sucesso!"
+async def cadastrar(
+    nome: str = Form(...),
+    email: str = Form(...),
+    senha: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Verificar se usuário já existe
+        existing_user = db.exec(select(Usuario).where(Usuario.email == email)).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Usuário já existe com este email")
+        
+        # Criar novo usuário
+        novo_usuario = Usuario(
+            nome=nome,
+            email=email,
+            senha=senha  # Em produção, você deveria hash a senha
+        )
+        
+        db.add(novo_usuario)
+        db.commit()
+        db.refresh(novo_usuario)
+        
+        return {
+            "message": f"Usuário {novo_usuario.nome} cadastrado com sucesso!",
+            "status": "success",
+            "user_id": novo_usuario.id,
+            "redirect": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+
 
 
 @app.post("/login")
@@ -652,7 +911,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 #await websocket.send_json({"error": "Usuário inválido"})
                 await websocket.close(code=1008)
                 return
-    except JWTError:
+    except (InvalidTokenError, DecodeError):
        # await websocket.send_json({"error": "Token inválido"})
         await websocket.close(code=1008)
         return
@@ -678,4 +937,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
 
 
 # Serve arquivos estáticos HTML/JS
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# Get the parent directory to access static files
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+# Only mount static files if directory exists
+if os.path.exists(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
