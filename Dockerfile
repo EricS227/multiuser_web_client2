@@ -1,33 +1,26 @@
 FROM python:3.9-slim
 
-WORKDIR /app
-
-# Install system dependencies
+# Instalar dependências do sistema ANTES de instalar os pacotes Python
 RUN apt-get update && apt-get install -y \
+    pkg-config \
+    default-libmysqlclient-dev \
+    build-essential \
     gcc \
-    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
-COPY backend/requirements.txt .
+WORKDIR /app
 
-# Install Python dependencies
+# Copiar requirements primeiro
+COPY requirements.txt .
+
+# Agora instalar os pacotes Python (vai funcionar porque as dependências estão instaladas)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY backend/ ./backend/
-COPY static/ ./static/
-COPY templates/ ./templates/
-COPY rasa/ ./rasa/
+# Copiar o resto do código
+COPY . .
 
-# Create directory for database
-RUN mkdir -p /app/data
-
-# Expose port
+# Configurar a porta
 EXPOSE 8000
 
-# Set environment variables
-ENV PYTHONPATH=/app
-
-# Command to run the application
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando para iniciar
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
