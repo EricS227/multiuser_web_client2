@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from datetime import timezone
 from sqlalchemy import text, inspect
 from pytz import timezone as tz
+from typing import Optional
 
 import bcrypt
 import httpx
@@ -308,7 +309,7 @@ class Conversation(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     customer_number: str
     name: Optional[str] = None
-    assigned_to: str | None
+    assigned_to: Optional[str] = None
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: str = "pending"
