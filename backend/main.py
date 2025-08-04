@@ -535,7 +535,7 @@ def chat_with_bot(message):
     response = requests.post('http://localhost:5005/webhooks/rest/webhook', json={"sender": "user", "message": message})
     return response.json()
 
-bot_response = chat_with_bot("Olá")
+#bot_response = chat_with_bot("Olá")
 print(bot_response)
 
 # Rotas
@@ -944,4 +944,5 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 # Only mount static files if directory exists
 if os.path.exists(STATIC_DIR):
+
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
