@@ -536,7 +536,7 @@ def chat_with_bot(message):
     return response.json()
 
 #bot_response = chat_with_bot("Olá")
-print(bot_response)
+#print(bot_response)
 
 # Rotas
 
@@ -946,3 +946,4 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 if os.path.exists(STATIC_DIR):
 
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
