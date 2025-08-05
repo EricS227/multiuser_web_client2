@@ -71,23 +71,10 @@ else:
 
 @app.get("/", response_class=HTMLResponse)
 def form_html(request: Request):
-    if templates and templates_dir:
-        try:
-            return templates.TemplateResponse("cadastro.html", {"request": request})
-        except Exception as e:
-            print(f"Template error: {e}")
+    # Skip template loading due to encoding issues, use direct fallback
+    print("Using inline HTML fallback for root route")
     
-    # Fallback: serve template content directly from static/cadastro.html
-    try:
-        static_cadastro_path = Path(__file__).parent.parent / "static" / "cadastro.html"
-        if static_cadastro_path.exists():
-            with open(static_cadastro_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return HTMLResponse(content)
-    except Exception as e:
-        print(f"Static fallback error: {e}")
-    
-    # Final fallback: inline HTML
+    # Direct inline HTML response
     return HTMLResponse("""
     <!DOCTYPE html>
     <html lang="en">
