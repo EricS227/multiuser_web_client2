@@ -410,15 +410,16 @@ async def cadastrar(
 ):
     try:
         # Verificar se usuário já existe
-        existing_user = db.exec(select(Usuario).where(Usuario.email == email)).first()
+        existing_user = db.exec(select(User).where(User.email == email)).first()
         if existing_user:
             raise HTTPException(status_code=400, detail="Usuário já existe com este email")
         
-        # Criar novo usuário
-        novo_usuario = Usuario(
-            nome=nome,
+        # Criar novo usuário na tabela User (não Usuario)
+        novo_usuario = User(
+            name=nome,
             email=email,
-            senha=senha  # Em produção, você deveria hash a senha
+            password_hash=hash_password(senha),  # Hash da senha
+            role="user"  # Role padrão
         )
         
         db.add(novo_usuario)
@@ -426,7 +427,7 @@ async def cadastrar(
         db.refresh(novo_usuario)
         
         return {
-            "message": f"Usuário {novo_usuario.nome} cadastrado com sucesso!",
+            "message": f"Usuário {novo_usuario.name} cadastrado com sucesso!",
             "status": "success",
             "user_id": novo_usuario.id,
             "redirect": True
