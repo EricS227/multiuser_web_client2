@@ -20,51 +20,29 @@
             <button onclick="login()">Entrar</button>
             <br><br>
             
-            <button onclick="window.location.href='cadastro.html'">Cadastrar</button>
+            <button onclick="window.location.href='/'">Cadastrar</button>
         </div>
 
-        <!-- Chat -->
-        <div id="chat-section" style="display:none;">
-            <div class="card">
-                <h3>Conversas</h3>
-                <ul id="conversation-list"></ul>
-            </div>
-
-            <div class="card" id="conversation-box" style="display:none;">
-                <h3>Chat com <span id="customer-number"></span></h3>
-                <div class="conversation" id="messages"></div>
-
-                <div class="message-input">
-                    <input type="text" id="message-input" placeholder="Digite uma mensagem..." />
-                    <button onclick="sendMessage()">Enviar</button>
-                </div>
-            </div>
-        </div>
     </div>
 
     <script>
         let token = localStorage.getItem("access_token") || "";
-        let currentConversationId = null;
-        let ws = null;
 
-        // Se já estiver autenticado, carrega interface e WebSocket
+        // Se já estiver autenticado, redireciona para clientui.html
         if (token) {
-            document.getElementById("login-section").style.display = "none";
-            document.getElementById("chat-section").style.display = "block";
-            connectWebSocket();
-            loadConversations();
+            window.location.href = "clientui.html";
         }
 
         async function login() {
             const button = document.querySelector("button");
-            button.disabled= true;
+            button.disabled = true;
             button.textContent = "Entrando...";
 
             const email = document.getElementById("email").value;
             const password = document.getElementById("password").value;
 
             if (!email || !password) {
-                alert("Preencha o e-mail e a senha.")
+                alert("Preencha o e-mail e a senha.");
                 button.disabled = false;
                 button.textContent = "Entrar";
                 return;
@@ -88,99 +66,19 @@
 
                 const data = await res.json();
                 if (data.access_token) {
-                    token = data.access_token;
-                    localStorage.setItem("access_token", token);
+                    localStorage.setItem("access_token", data.access_token);
                     window.location.href = "clientui.html";
                 } else {
                     alert("Erro ao autenticar.");
                     button.disabled = false;
                     button.textContent = "Entrar";
                 }
-                } catch (error) {
-                    console.error("Erro na requisição?", error);
-                    alert("Erro ao se conectar ao servidor");
-                    button.disabled = false;
-                    button.textContent = "Entrar";
-                }
+            } catch (error) {
+                console.error("Erro na requisição:", error);
+                alert("Erro ao se conectar ao servidor");
+                button.disabled = false;
+                button.textContent = "Entrar";
             }
-
-
-        async function loadConversations() {
-            const res = await fetch("/conversations", {
-                headers: {
-                    Authorization: `Bearer ${token}`
-                }
-            });
-
-            const conversations = await res.json();
-            const list = document.getElementById("conversation-list");
-            list.innerHTML = "";
-            conversations.forEach(conv => {
-                const li = document.createElement("li");
-                li.textContent = conv.customer_number;
-                li.style.cursor = "pointer";
-                li.onclick = () => openConversation(conv.id, conv.customer_number);
-                list.appendChild(li);
-            });
-        }
-
-        async function openConversation(id, number) {
-            currentConversationId = id;
-            document.getElementById("conversation-box").style.display = "block";
-            document.getElementById("customer-number").textContent = number;
-            document.getElementById("messages").innerHTML = "";
-
-            const messagesRes = await fetch(`/conversations/${id}/messages`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const messages = await messagesRes.json();
-
-            messages.forEach(m => {
-                appendMessage(m.sender, m.message);
-            });
-        }
-
-        function appendMessage(sender, content) {
-            const msgDiv = document.createElement("div");
-            msgDiv.className = "message " + sender;
-            msgDiv.textContent = content;
-            document.getElementById("messages").appendChild(msgDiv);
-            msgDiv.scrollIntoView({ behavior: "smooth" });
-        }
-
-        function connectWebSocket() {
-            if (ws) {
-                ws.close();
-            }
-            
-            ws = new WebSocket(`ws://${location.host}/ws`);
-
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === "new_message" && data.conversation_id === currentConversationId) {
-                    appendMessage(data.sender, data.message);
-                }
-            };
-            
-            ws.onopen = () => console.log("WebSocket conectado");
-            ws.onclose = () => console.log("WebSocket desconectado");
-        }
-
-        async function sendMessage() {
-            const input = document.getElementById("message-input");
-            const message = input.value;
-            if (!message || !currentConversationId) return;
-
-            await fetch(`/conversations/${currentConversationId}/reply`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ message })
-            });
-
-            input.value = "";
         }
     </script>
 </body>
