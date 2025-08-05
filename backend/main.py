@@ -303,11 +303,20 @@ def get_least_busy_agent(session: Session):
     return session.get(User, sorted_agents[0][0]) if sorted_agents else None
 
 def chat_with_bot(message):
-    response = requests.post('http://localhost:5005/webhooks/rest/webhook', json={"sender": "user", "message": message})
-    return response.json()
+    try:
+        response = requests.post('http://localhost:5005/webhooks/rest/webhook', json={"sender": "user", "message": message}, timeout=2)
+        return response.json()
+    except Exception as e:
+        print(f"Bot not available: {e}")
+        return None
 
-bot_response = chat_with_bot("Olá")
-print(bot_response)
+# Test bot connection only if available
+try:
+    bot_response = chat_with_bot("Olá")
+    if bot_response:
+        print("Bot connected successfully")
+except:
+    print("Bot server not running - continuing without bot integration")
 
 # Rotas
 
