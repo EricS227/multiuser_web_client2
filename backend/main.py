@@ -45,11 +45,99 @@ engine = create_engine(DATABASE_URL, echo=True)
 
 
 
-templates = Jinja2Templates(directory="templates")
+# Get the absolute path to templates directory
+import os
+from pathlib import Path
+
+# Try multiple possible template directory locations
+possible_template_dirs = [
+    Path(__file__).parent.parent / "templates",  # ../templates (from backend/)
+    Path("templates"),  # ./templates (from project root)
+    Path(__file__).parent / "templates",  # ./backend/templates
+]
+
+templates_dir = None
+for dir_path in possible_template_dirs:
+    if dir_path.exists() and (dir_path / "cadastro.html").exists():
+        templates_dir = dir_path
+        break
+
+if templates_dir:
+    templates = Jinja2Templates(directory=str(templates_dir))
+    print(f"Using templates directory: {templates_dir}")
+else:
+    print("Warning: No templates directory found!")
+    templates = None
 
 @app.get("/", response_class=HTMLResponse)
 def form_html(request: Request):
-    return templates.TemplateResponse("cadastro.html", {"request": request})
+    if templates and templates_dir:
+        try:
+            return templates.TemplateResponse("cadastro.html", {"request": request})
+        except Exception as e:
+            print(f"Template error: {e}")
+    
+    # Fallback: serve template content directly from static/cadastro.html
+    try:
+        static_cadastro_path = Path(__file__).parent.parent / "static" / "cadastro.html"
+        if static_cadastro_path.exists():
+            with open(static_cadastro_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return HTMLResponse(content)
+    except Exception as e:
+        print(f"Static fallback error: {e}")
+    
+    # Final fallback: inline HTML
+    return HTMLResponse("""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cadastro</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }
+            form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+            input[type="text"], input[type="email"], input[type="password"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+            button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+            button:hover { background: #0056b3; }
+            .secondary-btn { background: #6c757d; margin-top: 10px; }
+            .secondary-btn:hover { background: #545b62; }
+        </style>
+    </head>
+    <body>
+        <h2>Cadastro de Usuário</h2>
+        <form id="cadastroForm">
+            <input type="text" name="nome" placeholder="Nome" required><br>
+            <input type="email" name="email" placeholder="Email" required><br>
+            <input type="password" name="senha" placeholder="Senha" required><br>
+            <button type="submit">Cadastrar</button>
+        </form>
+        <button class="secondary-btn" onclick="window.location.href='index.html'">Voltar para Login</button>
+        <div id="mensagem"></div>
+        <script>
+            document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                try {
+                    const res = await fetch('/cadastrar', { method: 'POST', body: formData });
+                    if (res.ok) {
+                        const result = await res.json();
+                        document.getElementById('mensagem').innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; margin: 10px 0;">' + result.message + '</div>';
+                        document.getElementById('cadastroForm').reset();
+                        setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+                    } else {
+                        const error = await res.json();
+                        document.getElementById('mensagem').innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px 0;">Erro no cadastro</div>';
+                    }
+                } catch (error) {
+                    document.getElementById('mensagem').innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px 0;">Erro de conexão</div>';
+                }
+            });
+        </script>
+    </body>
+    </html>
+    """)
 
 
 # Autenticação
