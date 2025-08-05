@@ -100,7 +100,7 @@ def form_html(request: Request):
             <input type="password" name="senha" placeholder="Senha" required><br>
             <button type="submit">Cadastrar</button>
         </form>
-        <button class="secondary-btn" onclick="window.location.href='index.html'">Voltar para Login</button>
+        <button class="secondary-btn" onclick="goToLogin()">Voltar para Login</button>
         <div id="mensagem"></div>
         <script>
             document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
@@ -121,6 +121,12 @@ def form_html(request: Request):
                     document.getElementById('mensagem').innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px 0;">Erro de conexão</div>';
                 }
             });
+            
+            function goToLogin() {
+                // Clear any existing token to ensure we see the login form
+                localStorage.removeItem("access_token");
+                window.location.href = 'index.html';
+            }
         </script>
     </body>
     </html>
