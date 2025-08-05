@@ -90,10 +90,6 @@
                 if (data.access_token) {
                     token = data.access_token;
                     localStorage.setItem("access_token", token);
-                    document.getElementById("login-section").style.display = "none";
-                    document.getElementById("chat-section").style.display = "block";
-                    connectWebSocket();
-                    loadConversations();
                     window.location.href = "clientui.html";
                 } else {
                     alert("Erro ao autenticar.");
