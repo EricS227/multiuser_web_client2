@@ -7,280 +7,134 @@ from fastapi.templating import Jinja2Templates
 from sqlmodel import Field, SQLModel, Session, create_engine, select
 from datetime import datetime, timedelta
 from typing import Optional, List
-from jose import JWTError, jwt
+import jwt
+from jwt import InvalidTokenError, DecodeError
 from passlib.context import CryptContext
 from twilio.rest import Client
 from pydantic import BaseModel
-from fastapi.encoders import jsonable_encoder
 from dotenv import load_dotenv 
 from datetime import timezone
 from sqlalchemy import text, inspect
-from pytz import timezone as tz
+from backend.chatbot_service import EnhancedChatbotService
+from backend.models import User, Conversation, Message, AuditLog, BotInteraction, Usuario, brazilian_now
 
-import bcrypt
 import httpx
 import os
 import asyncio
-import uvicorn
 import requests
 
 load_dotenv()
 
 app = FastAPI()
 
-# CORS
+# CORS - Configure for production
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 
-# Banco de dados
-DATABASE_URL = "sqlite:///./chatwoot_clone.db"
-engine = create_engine(DATABASE_URL, echo=True)
+# Banco de dados - Railway compatible
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chatwoot_clone.db")
+engine = create_engine(DATABASE_URL, echo=False)  # Disable echo in production
 
 
+
+# Get the absolute path to templates directory
+from pathlib import Path
+
+# Try multiple possible template directory locations
+possible_template_dirs = [
+    Path(__file__).parent.parent / "templates",  # ../templates (from backend/)
+    Path("templates"),  # ./templates (from project root)
+    Path(__file__).parent / "templates",  # ./backend/templates
+]
+
+templates_dir = None
+for dir_path in possible_template_dirs:
+    if dir_path.exists() and (dir_path / "cadastro.html").exists():
+        templates_dir = dir_path
+        break
+
+if templates_dir:
+    templates = Jinja2Templates(directory=str(templates_dir))
+    print(f"Using templates directory: {templates_dir}")
+else:
+    print("Warning: No templates directory found!")
+    templates = None
 
 @app.get("/", response_class=HTMLResponse)
-
-def form_html():
-     return """
+def form_html(request: Request):
+    # Skip template loading due to encoding issues, use direct fallback
+    print("Using inline HTML fallback for root route")
+    
+    # Direct inline HTML response
+    return HTMLResponse("""
     <!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cadastro</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #f1f2f7;
-            margin: 0;
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-
-        .container {
-            background: white;
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.05);
-            max-width: 400px;
-            width: 100%;
-            margin: 20px;
-        }
-
-        h2 {
-            color: #4338ca;
-            text-align: center;
-            margin-bottom: 2rem;
-            font-weight: 600;
-        }
-        
-        form {
-            margin-bottom: 20px;
-        }
-        
-        input[type="text"], input[type="email"], input[type="password"] {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            box-sizing: border-box;
-            font-size: 14px;
-            transition: border-color 0.3s;
-        }
-
-        input[type="text"]:focus, input[type="email"]:focus, input[type="password"]:focus {
-            outline: none;
-            border-color: #4338ca;
-            box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.1);
-        }
-        
-        button {
-            width: 100%;
-            padding: 12px;
-            background-color: #4338ca;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            margin: 10px 0;
-            transition: background-color 0.3s;
-        }
-        
-        button:hover {
-            background-color: #3730a3;
-        }
-        
-        .secondary-btn {
-            background-color: #6c757d;
-        }
-        
-        .secondary-btn:hover {
-            background-color: #545b62;
-        }
-        
-        button:disabled {
-            background-color: #6c757d;
-            cursor: not-allowed;
-            opacity: 0.7;
-        }
-        
-        .success-message {
-            color: #155724;
-            padding: 12px;
-            background: #d4edda;
-            border: 1px solid #c3e6cb;
-            border-radius: 5px;
-            margin: 15px 0;
-            font-size: 14px;
-        }
-        
-        .error-message {
-            color: #721c24;
-            padding: 12px;
-            background: #f8d7da;
-            border: 1px solid #f5c6cb;
-            border-radius: 5px;
-            margin: 15px 0;
-            font-size: 14px;
-        }
-
-        .loading {
-            text-align: center;
-            color: #4338ca;
-            font-size: 14px;
-            padding: 10px;
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 5px;
-            color: #374151;
-            font-weight: 500;
-            font-size: 14px;
-        }
-
-        .btn-group {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 20px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Cadastro</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 400px; margin: 50px auto; padding: 20px; }
+            form { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+            input[type="text"], input[type="email"], input[type="password"] { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+            button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+            button:hover { background: #0056b3; }
+            .secondary-btn { background: #6c757d; margin-top: 10px; }
+            .secondary-btn:hover { background: #545b62; }
+        </style>
+    </head>
+    <body>
         <h2>Cadastro de Usuário</h2>
-        
         <form id="cadastroForm">
-            <div class="form-group">
-                <label for="nome">Nome completo</label>
-                <input type="text" id="nome" name="nome" placeholder="Digite seu nome" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="email">E-mail</label>
-                <input type="email" id="email" name="email" placeholder="Digite seu e-mail" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="senha">Senha</label>
-                <input type="password" id="senha" name="senha" placeholder="Digite sua senha" required>
-            </div>
-
-            <div class="btn-group">
-                <button type="submit" id="submitBtn">Cadastrar</button>
-            </div>
+            <input type="text" name="nome" placeholder="Nome" required><br>
+            <input type="email" name="email" placeholder="Email" required><br>
+            <input type="password" name="senha" placeholder="Senha" required><br>
+            <button type="submit">Cadastrar</button>
         </form>
-
-        <button class="secondary-btn" onclick="window.location.href='index.html'">
-            Voltar para Login
-        </button>
-
+        <button class="secondary-btn" onclick="goToLogin()">Voltar para Login</button>
         <div id="mensagem"></div>
-    </div>
-
-    <script>
-        document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            const submitBtn = document.getElementById('submitBtn');
-            const mensagemDiv = document.getElementById('mensagem');
-            
-            // Desabilita o botão e mostra loading
-            submitBtn.disabled = true;
-            submitBtn.textContent = 'Cadastrando...';
-            mensagemDiv.innerHTML = '<div class="loading">Processando...</div>';
-            
-            const formData = new FormData(e.target);
-            
-            try {
-                const res = await fetch('/cadastrar', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (res.ok) {
-                    const result = await res.json();
-                    
-                    mensagemDiv.innerHTML = 
-                        '<div class="success-message">' + result.message + '</div>';
-                    
-                    document.getElementById('cadastroForm').reset();
-                    
-                    // Redireciona após 2 segundos
-                    setTimeout(() => {
-                        window.location.href = 'index.html';
-                    }, 2000);
-                    
-                } else {
-                    const error = await res.json();
-                    let errorMessage = 'Erro no cadastro';
-                    
-                    if (error.detail) {
-                        if (typeof error.detail === 'string') {
-                            errorMessage = error.detail;
-                        } else if (Array.isArray(error.detail)) {
-                            errorMessage = error.detail.map(e => e.msg).join(', ');
-                        }
+        <script>
+            document.getElementById('cadastroForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                try {
+                    const res = await fetch('/cadastrar', { method: 'POST', body: formData });
+                    if (res.ok) {
+                        const result = await res.json();
+                        document.getElementById('mensagem').innerHTML = '<div style="color: green; padding: 10px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; margin: 10px 0;">' + result.message + '</div>';
+                        document.getElementById('cadastroForm').reset();
+                        setTimeout(() => { window.location.href = 'index.html'; }, 2000);
+                    } else {
+                        const error = await res.json();
+                        document.getElementById('mensagem').innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px 0;">Erro no cadastro</div>';
                     }
-                    
-                    mensagemDiv.innerHTML =
-                        '<div class="error-message">' + errorMessage + '</div>';
+                } catch (error) {
+                    document.getElementById('mensagem').innerHTML = '<div style="color: red; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; margin: 10px 0;">Erro de conexão</div>';
                 }
-                
-            } catch (error) {
-                console.error('Erro:', error);
-                mensagemDiv.innerHTML =
-                    '<div class="error-message">Erro de conexão. Tente novamente.</div>';
-            } finally {
-                // Reabilita o botão
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Cadastrar';
+            });
+            
+            function goToLogin() {
+                // Clear any existing token to ensure we see the login form
+                localStorage.removeItem("access_token");
+                window.location.href = 'index.html';
             }
-        });
-    </script>
-</body>
-</html>
-    """
+        </script>
+    </body>
+    </html>
+    """)
 
 
 # Autenticação
-SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("SECRET_KEY environment variable is required for production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -294,41 +148,12 @@ TO = 'whatsapp:+5531996950370'
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 
-# Modelos
-class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    email: str
-    name: str
-    password_hash: str
-    role: str
-
-
-class Conversation(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    customer_number: str
-    name: Optional[str] = None
-    assigned_to: str | None
-    created_by: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    status: str = "pending"
-
-
-class Message(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    conversation_id: int
-    sender: str
-    content: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+# Import models from models.py
+# Models are now imported at the top of the file
 
 class ConversationCreate(BaseModel):
     customer_number: str
     initial_message: str
-
-class Usuario(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    nome: str
-    email: str
-    senha: str
 
 class UsuarioCreate(BaseModel):
     nome: str
@@ -408,7 +233,7 @@ def create_admin_user():
                 password_hash=hash_password("senha123"),
                 role="admin"
             )
-            session.add(admin_user)  # deve estar dentro do if
+            session.add(admin_user)
 
         # Cria user padrão se não existir
         standard = session.exec(select(User).where(User.email == "user@test.com")).first()
@@ -419,7 +244,18 @@ def create_admin_user():
                 password_hash=hash_password("senha1234"),
                 role="user"
             )
-            session.add(standard_user)  # também dentro do if
+            session.add(standard_user)
+
+        # Cria usuário do sistema para conversas automáticas
+        system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+        if not system_user:
+            system_user = User(
+                email="system@internal",
+                name="System",
+                password_hash=hash_password("system_internal_password"),
+                role="system"
+            )
+            session.add(system_user)
 
         session.commit()
      
@@ -459,7 +295,7 @@ def verify_password(plain, hashed):
 
 def create_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=30))
+    expire = brazilian_now() + (expires_delta or timedelta(minutes=30))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -473,7 +309,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Dep
         if user is None:
             raise HTTPException(status_code=401, detail="Usuário não encontrado")
         return user
-    except JWTError:
+    except (InvalidTokenError, DecodeError):
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
@@ -530,11 +366,20 @@ def get_least_busy_agent(session: Session):
     return session.get(User, sorted_agents[0][0]) if sorted_agents else None
 
 def chat_with_bot(message):
-    response = requests.post('http://localhost:5005/webhooks/rest/webhook', json={"sender": "user", "message": message})
-    return response.json()
+    try:
+        response = requests.post('http://localhost:5005/webhooks/rest/webhook', json={"sender": "user", "message": message}, timeout=2)
+        return response.json()
+    except Exception as e:
+        print(f"Bot not available: {e}")
+        return None
 
-bot_response = chat_with_bot("Olá")
-print(bot_response)
+# Test bot connection only if available
+try:
+    bot_response = chat_with_bot("Olá")
+    if bot_response:
+        print("Bot connected successfully")
+except:
+    print("Bot server not running - continuing without bot integration")
 
 # Rotas
 
@@ -547,15 +392,16 @@ async def cadastrar(
 ):
     try:
         # Verificar se usuário já existe
-        existing_user = db.exec(select(Usuario).where(Usuario.email == email)).first()
+        existing_user = db.exec(select(User).where(User.email == email)).first()
         if existing_user:
             raise HTTPException(status_code=400, detail="Usuário já existe com este email")
         
-        # Criar novo usuário
-        novo_usuario = Usuario(
-            nome=nome,
+        # Criar novo usuário na tabela User (não Usuario)
+        novo_usuario = User(
+            name=nome,
             email=email,
-            senha=senha  # Em produção, você deveria hash a senha
+            password_hash=hash_password(senha),  # Hash da senha
+            role="user"  # Role padrão
         )
         
         db.add(novo_usuario)
@@ -563,7 +409,7 @@ async def cadastrar(
         db.refresh(novo_usuario)
         
         return {
-            "message": f"Usuário {novo_usuario.nome} cadastrado com sucesso!",
+            "message": f"Usuário {novo_usuario.name} cadastrado com sucesso!",
             "status": "success",
             "user_id": novo_usuario.id,
             "redirect": True
@@ -623,7 +469,7 @@ async def reply(conversation_id: int, payload: MessagePayload, session: Session 
 
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversa não encontrada")
-    if str(conversation.assigned_to) != str(user.id):
+    if conversation.assigned_to != user.id:
         raise HTTPException(status_code=403, detail="Você não está atribuído a essa conversa")
 
     message = Message(
@@ -660,12 +506,7 @@ def end_conversation(conversation_id: int, db: Session = Depends(get_session), u
     if user.role == "admin":
         pass
     else:
-        try:
-            assigned_to = int(conversation.assigned_to) if conversation.assigned_to else None
-        except (ValueError, TypeError):
-            assigned_to = None
-
-        if assigned_to != user.id:
+        if conversation.assigned_to != user.id:
             raise HTTPException(status_code=403, detail="Você não está atribuído a essa conversa")
     if conversation.status == "closed":
         raise HTTPException(status_code=400, detail="Conversation already closed")
@@ -679,6 +520,8 @@ def end_conversation(conversation_id: int, db: Session = Depends(get_session), u
         raise HTTPException(status_code=500, detail="Error ending conversation")
 
 
+# Legacy bot functions - now replaced by EnhancedChatbotService
+# Keeping for backward compatibility if needed
 async def query_rasa_bot(message: str, sender_id: str):
     try: 
         async with httpx.AsyncClient() as client:
@@ -707,117 +550,147 @@ async def query_ollama_bot(message: str, model: str = "mistral"):
   
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request, session: Session = Depends(get_session)):
+    """Enhanced WhatsApp webhook with intelligent chatbot routing and context management"""
     try:
-        # Tentar receber dados como JSON primeiro
+        # Parse incoming message data
         try:
             payload = await request.json()
             from_number = payload.get("from", "").replace("whatsapp:", "")
             message_body = payload.get("message", "")
             profile_name = payload.get("name", "Cliente")
         except:
-            # Se falhar, tentar como form data (formato padrão do Twilio)
+            # Fallback to form data (standard Twilio format)
             form_data = await request.form()
             from_number = form_data.get("From", "").replace("whatsapp:", "")
             message_body = form_data.get("Body", "")
             profile_name = form_data.get("ProfileName", "Cliente")
 
-        print(f"Mensagem recebida de {from_number}: {message_body}")
+        print(f"📱 Mensagem recebida de {from_number}: {message_body}")
 
         if not from_number or not message_body:
             raise HTTPException(status_code=400, detail="Dados incompletos")
 
-        # PRIMEIRA ETAPA: Tentar resposta automática com bots
+        # Initialize enhanced chatbot service
+        chatbot_service = EnhancedChatbotService(session)
         
-        # Consultar Rasa
-        rasa_responses = await query_rasa_bot(message_body, from_number)
-        if rasa_responses:
-            for rasa_resp in rasa_responses:
-                text = rasa_resp.get("text")
-                if text and "encaminhar_para_humano" not in text.lower():
-                    # Resposta automática do Rasa - envia direto via WhatsApp
-                    send_whatsapp_message(from_number, text)
-                    
-                    # Notifica interface (opcional, para histórico)
-                    await manager.send_personal_message({
-                        "sender": "bot",
-                        "message": text,
-                        "conversation_id": None,
-                        "customer_number": from_number
-                    }, from_number)
-                    
-                    return {"status": "respondido pelo Rasa"}
-
-        # Consultar Ollama
-        ollama_reply = await query_ollama_bot(message_body)
-        if ollama_reply and "falar com atendente" not in ollama_reply.lower():
-            # Resposta automática do Ollama - envia direto via WhatsApp
-            send_whatsapp_message(from_number, ollama_reply)
+        # Process message through enhanced chatbot logic
+        chatbot_result = await chatbot_service.process_message(from_number, message_body, profile_name)
+        
+        if not chatbot_result['should_escalate'] and chatbot_result['bot_response']:
+            # Bot can handle this - send automated response
+            bot_response = chatbot_result['bot_response']
             
-            # Notifica interface (opcional, para histórico)
+            print(f"🤖 Bot respondendo: {bot_response}")
+            
+            # Send response via WhatsApp
+            send_whatsapp_message(from_number, bot_response)
+            
+            # Save bot interaction to database (optional - for analytics)
+            await _save_bot_interaction(session, from_number, message_body, bot_response, profile_name)
+            
+            # Notify interface for monitoring (optional)
             await manager.send_personal_message({
                 "sender": "bot",
-                "message": ollama_reply,
+                "message": bot_response,
                 "conversation_id": None,
-                "customer_number": from_number
+                "customer_number": from_number,
+                "customer_name": profile_name,
+                "timestamp": brazilian_now().isoformat()
             }, from_number)
             
-            return {"status": "respondido pelo Ollama"}
-
-        # SEGUNDA ETAPA: Se bots não responderam, encaminhar para agente
+            return {"status": "bot_response", "response": bot_response}
         
-        # Verificar se já existe conversa ativa
-        conversation = session.exec(
-            select(Conversation).where(
-                Conversation.customer_number == from_number,
-                Conversation.status == "pending"
-            )
-        ).first()
+        else:
+            # Escalate to human agent
+            escalation_reason = chatbot_result['escalation_reason']
+            print(f"👥 Escalando para agente humano. Motivo: {escalation_reason}")
+            
+            # Get escalation message
+            escalation_message = chatbot_service.get_escalation_message(escalation_reason, profile_name)
+            
+            # Check if conversation already exists
+            conversation = session.exec(
+                select(Conversation).where(
+                    Conversation.customer_number == from_number,
+                    Conversation.status == "pending"
+                )
+            ).first()
 
-        # Se não existe conversa ativa, criar uma nova
-        if not conversation:
-            agent = get_least_busy_agent(session)
-            conversation = Conversation(
-                customer_number=from_number,
-                name=profile_name,
-                assigned_to=agent.id if agent else None,
-                created_by=agent.id if agent else None,
-                status="pending",
+            # Create new conversation if doesn't exist
+            if not conversation:
+                agent = get_least_busy_agent(session)
+                
+                # Get system user for conversation creation when no agent available
+                system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                if not system_user:
+                    raise HTTPException(status_code=500, detail="System user not found")
+                
+                conversation = Conversation(
+                    customer_number=from_number,
+                    name=profile_name,
+                    assigned_to=agent.id if agent else None,
+                    created_by=agent.id if agent else system_user.id,
+                    status="pending",
+                )
+                session.add(conversation)
+                session.commit()
+                session.refresh(conversation)
+
+                # Send escalation message for new conversations
+                try:
+                    send_whatsapp_message(from_number, escalation_message)
+                except Exception as e:
+                    print(f"❌ Erro ao enviar mensagem de escalação: {e}")
+
+            # Save customer message to database
+            msg = Message(
+                conversation_id=conversation.id,
+                sender="customer",
+                content=message_body
             )
-            session.add(conversation)
+            session.add(msg)
             session.commit()
-            session.refresh(conversation)
 
-            # Enviar mensagem de boas-vindas apenas para conversas novas
-            try:
-                send_whatsapp_message(from_number, f"Olá {profile_name}, um operador entrará em contato com você em breve.")
-            except Exception as e:
-                print(f"Erro ao enviar mensagem de boas-vindas: {e}")
+            # Notify agents via WebSocket with enhanced information
+            await manager.broadcast({
+                "id": msg.id,
+                "conversation_id": conversation.id,
+                "sender": "customer",
+                "message": message_body,
+                "timestamp": msg.timestamp.isoformat(),
+                "customer_name": profile_name,
+                "customer_number": from_number,
+                "escalation_reason": escalation_reason,
+                "bot_interaction_count": chatbot_result.get('bot_interaction_count', 0)
+            })
 
-        # Salvar mensagem do cliente no banco
-        msg = Message(
-            conversation_id=conversation.id,
-            sender="customer",
-            content=message_body
-        )
-        session.add(msg)
-        session.commit()
-
-        # Notificar agentes via WebSocket
-        await manager.broadcast({
-            "id": msg.id,
-            "conversation_id": conversation.id,
-            "sender": "customer",
-            "message": message_body,
-            "timestamp": msg.timestamp.isoformat(),
-            "customer_name": profile_name,
-            "customer_number": from_number
-        })
-
-        return {"status": "encaminhado para operador"}
+            return {"status": "escalated_to_agent", "reason": escalation_reason}
 
     except Exception as e:
-        print(f"Erro no webhook WhatsApp: {e}")
-        return {"status": "erro", "message": str(e)}
+        print(f"❌ Erro no webhook WhatsApp: {e}")
+        return {"status": "error", "message": str(e)}
+
+async def _save_bot_interaction(session: Session, phone_number: str, user_message: str, bot_response: str, profile_name: str, bot_type: str = "enhanced", escalated: bool = False, escalation_reason: str = None):
+    """Save bot interaction for analytics"""
+    try:
+        from backend.models import BotInteraction
+        
+        interaction = BotInteraction(
+            phone_number=phone_number,
+            customer_name=profile_name,
+            user_message=user_message,
+            bot_response=bot_response,
+            bot_type=bot_type,
+            escalated=escalated,
+            escalation_reason=escalation_reason
+        )
+        
+        session.add(interaction)
+        session.commit()
+        
+        print(f"💾 Bot interaction saved: {phone_number} -> {user_message[:50]}... -> {bot_response[:50]}...")
+    except Exception as e:
+        print(f"❌ Erro ao salvar interação do bot: {e}")
 
 @app.post("/conversations/{conversation_id}/assign")
 def assign_conversation(conversation_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
@@ -828,6 +701,134 @@ def assign_conversation(conversation_id: int, user: User = Depends(get_current_u
     session.add(conversation)
     session.commit()
     return {"msg": "Conversa atribuida ao operador"}
+
+# Enhanced chatbot management endpoints
+@app.get("/chatbot/status")
+def get_chatbot_status(user: User = Depends(get_current_user)):
+    """Get current chatbot service status and statistics"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem acessar")
+    
+    try:
+        # Test bot services availability
+        import asyncio
+        async def check_services():
+            rasa_status = "offline"
+            ollama_status = "offline"
+            
+            # Check Rasa
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get("http://localhost:5005/webhooks/rest/webhook", timeout=2)
+                    if response.status_code == 405:  # Method not allowed is expected for GET
+                        rasa_status = "online"
+            except:
+                pass
+            
+            # Check Ollama
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get("http://localhost:11434/api/tags", timeout=2)
+                    if response.status_code == 200:
+                        ollama_status = "online"
+            except:
+                pass
+            
+            return rasa_status, ollama_status
+        
+        rasa_status, ollama_status = asyncio.run(check_services())
+        
+        return {
+            "chatbot_service": "active",
+            "rasa_status": rasa_status,
+            "ollama_status": ollama_status,
+            "features": {
+                "context_management": True,
+                "smart_escalation": True,
+                "response_fallbacks": True,
+                "conversation_memory": True
+            }
+        }
+    except Exception as e:
+        return {"chatbot_service": "error", "message": str(e)}
+
+@app.post("/chatbot/clear-context/{phone_number}")
+def clear_chatbot_context(phone_number: str, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Clear conversation context for a specific phone number"""
+    if user.role not in ["admin", "agent"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    try:
+        chatbot_service = EnhancedChatbotService(session)
+        chatbot_service.context_manager.clear_context(phone_number)
+        return {"message": f"Contexto limpo para {phone_number}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao limpar contexto: {str(e)}")
+
+@app.post("/chatbot/cleanup-contexts")
+def cleanup_expired_contexts(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Clean up expired conversation contexts"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem acessar")
+    
+    try:
+        chatbot_service = EnhancedChatbotService(session)
+        chatbot_service.context_manager.cleanup_expired_contexts()
+        return {"message": "Contextos expirados limpos com sucesso"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro na limpeza: {str(e)}")
+
+@app.get("/chatbot/analytics")
+def get_chatbot_analytics(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Get chatbot performance analytics"""
+    if user.role not in ["admin", "agent"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    try:
+        from backend.models import BotInteraction
+        from sqlalchemy import func
+        
+        # Get basic statistics
+        total_interactions = session.exec(select(func.count(BotInteraction.id))).first()
+        escalated_interactions = session.exec(
+            select(func.count(BotInteraction.id)).where(BotInteraction.escalated == True)
+        ).first()
+        
+        # Bot type distribution
+        bot_type_stats = session.exec(
+            select(BotInteraction.bot_type, func.count(BotInteraction.id))
+            .group_by(BotInteraction.bot_type)
+        ).all()
+        
+        # Escalation reasons
+        escalation_reasons = session.exec(
+            select(BotInteraction.escalation_reason, func.count(BotInteraction.id))
+            .where(BotInteraction.escalated == True)
+            .group_by(BotInteraction.escalation_reason)
+        ).all()
+        
+        # Recent interactions (last 24 hours)
+        from datetime import datetime, timedelta
+        yesterday = brazilian_now() - timedelta(days=1)
+        recent_interactions = session.exec(
+            select(func.count(BotInteraction.id))
+            .where(BotInteraction.timestamp >= yesterday)
+        ).first()
+        
+        success_rate = ((total_interactions - escalated_interactions) / total_interactions * 100) if total_interactions > 0 else 0
+        
+        return {
+            "total_interactions": total_interactions,
+            "escalated_interactions": escalated_interactions,
+            "success_rate": round(success_rate, 2),
+            "bot_type_distribution": dict(bot_type_stats),
+            "escalation_reasons": dict(escalation_reasons),
+            "interactions_last_24h": recent_interactions,
+            "analytics_period": "all_time"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao gerar analytics: {str(e)}")
 
 
 
@@ -862,7 +863,7 @@ def create_conversation(data: ConversationCreate, user=Depends(get_current_user)
         conversation_id=conversation.id,
         sender="customer",
         content=data.initial_message,
-        timestamp=datetime.utcnow()
+        timestamp=brazilian_now()
     )
     session.add(message)
     session.commit()
@@ -910,7 +911,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 #await websocket.send_json({"error": "Usuário inválido"})
                 await websocket.close(code=1008)
                 return
-    except JWTError:
+    except (InvalidTokenError, DecodeError):
        # await websocket.send_json({"error": "Token inválido"})
         await websocket.close(code=1008)
         return
