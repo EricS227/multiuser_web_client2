@@ -52,6 +52,11 @@
             background: #545b62;
         }
         
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
         .success-message {
             color: green;
             padding: 10px;
@@ -83,7 +88,7 @@
         <input type="text" name="nome" placeholder="Nome" required><br>
         <input type="email" name="email" placeholder="Email" required><br>
         <input type="password" name="senha" placeholder="Senha" required><br>
-        <button type="submit">Cadastrar</button>
+        <button type="submit" id="submitBtn">Cadastrar</button>
     </form>
 
     <button class="secondary-btn" onclick="window.location.href='index.html'">
@@ -107,7 +112,7 @@
             const formData = new FormData(e.target);
             
             try {
-                const res = await fetch('/api/cadastrar', {  // Nova rota
+                const res = await fetch('/cadastrar', {  // Nova rota
                     method: 'POST',
                     body: formData
                 });
