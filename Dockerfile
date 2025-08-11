@@ -29,6 +29,7 @@ RUN echo 'fastapi>=0.100.0' > requirements.txt && \
     echo 'redis>=4.0.0' >> requirements.txt && \
     echo 'pytz>=2022.1' >> requirements.txt && \
     echo 'sqlalchemy>=2.0.0' >> requirements.txt && \
+    echo 'psycopg2-binary>=2.9.0' >> requirements.txt && \
     echo 'rasa-sdk>=3.6.0' >> requirements.txt && \
     echo 'requests-toolbelt>=1.0.0' >> requirements.txt
 
@@ -41,10 +42,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY backend/ ./backend/
 COPY static/ ./static/
-COPY .env ./
 
 # Expose port
 EXPOSE 8000
 
 # Start the application
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}
