@@ -5,12 +5,10 @@ services:
     build: .
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=sqlite:///./data/chatwoot_clone.db
-      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
-      - TWILIO_WHATSAPP_FROM=${TWILIO_WHATSAPP_FROM}
     volumes:
       - ./data:/app/data
     restart: unless-stopped
