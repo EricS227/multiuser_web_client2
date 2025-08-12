@@ -134,7 +134,10 @@ def form_html(request: Request):
 # Autenticação
 SECRET_KEY = os.getenv("SECRET_KEY")
 if not SECRET_KEY:
-    raise ValueError("SECRET_KEY environment variable is required for production")
+    import secrets
+    SECRET_KEY = secrets.token_urlsafe(32)
+    print("WARNING: No SECRET_KEY found in environment. Generated temporary secret key.")
+    print("For production, set SECRET_KEY environment variable in Railway dashboard:")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
