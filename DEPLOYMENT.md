@@ -34,6 +34,7 @@ This guide explains how to deploy your FastAPI Chat Application to various hosti
 - Automatic HTTPS
 - Built-in database options
 
+**Quick Deploy:**
 ```bash
 # Install Railway CLI
 npm install -g @railway/cli
@@ -43,6 +44,15 @@ railway login
 railway init
 railway up
 ```
+
+**Environment Setup:**
+1. Run the setup script: `chmod +x railway-setup.sh && ./railway-setup.sh`
+2. Or manually add these variables in Railway dashboard:
+   - `SECRET_KEY`: Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+   - `DATABASE_URL`: Add PostgreSQL service (Railway provides automatically)
+   - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (optional)
+
+**Important:** The application now includes automatic SECRET_KEY generation if not provided, but for production security, always set a fixed SECRET_KEY in Railway's environment variables.
 
 ### 2. **DigitalOcean App Platform**
 - Simple deployment
