@@ -103,6 +103,34 @@
       border-bottom-left-radius: 0;
     }
 
+    .message.bot {
+      align-self: flex-start;
+      background-color: #e8f5e8;
+      border-bottom-right-radius: 0;
+      border-left: 3px solid #4caf50;
+    }
+
+    .message.bot .sender {
+      color: #2e7d32;
+    }
+
+    .bot-indicator {
+      font-size: 12px;
+      color: #4caf50;
+      font-weight: bold;
+      margin-right: 5px;
+    }
+
+    .escalation-indicator {
+      background-color: #fff3e0;
+      border-left: 3px solid #ff9800;
+      color: #e65100;
+      font-size: 12px;
+      padding: 5px;
+      margin: 5px 0;
+      border-radius: 4px;
+    }
+
     .chat-input {
       display: flex;
       gap: 10px;
@@ -187,12 +215,31 @@
           const chat = document.getElementById("chat-messages");
           const time = data.timestamp ? new Date(data.timestamp) : new Date();
           const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const msgClass = data.sender === "agent" ? "message agent" : "message";
+          let msgClass = "message";
+          let senderDisplay = data.sender;
+          let botIndicator = "";
+
+          if (data.message_type === "bot" || data.sender === "bot") {
+            msgClass = "message bot";
+            senderDisplay = "🤖 Bot";
+            if (data.bot_service) {
+              botIndicator = `<span class="bot-indicator">[${data.bot_service}]</span>`;
+            }
+          } else if (data.message_type === "agent" || data.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "👤 Atendente";
+          } else if (data.message_type === "customer" || data.sender === "customer") {
+            msgClass = "message";
+            senderDisplay = "👨‍💼 Cliente";
+          } else if (data.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "👤 Atendente";
+          }
 
           const messageDiv = document.createElement("div");
           messageDiv.className = msgClass;
           messageDiv.innerHTML = `
-            <span class="sender"><strong>${data.sender}:</strong> ${data.message}</span><br>
+            <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${data.message}</span><br>
             <small style="font-size: 10px; color: gray;">${timeStr}</small>
           `;
           
@@ -315,11 +362,31 @@
         const chat = document.getElementById("chat-messages");
 
         chat.innerHTML = messages.map(m => {
-          const msgClass = m.sender === "agent" ? "message agent" : "message";
+          let msgClass = "message";
+          let senderDisplay = m.sender;
+          let botIndicator = "";
+
+          if (m.message_type === "bot" || m.sender === "bot") {
+            msgClass = "message bot";
+            senderDisplay = "🤖 Bot";
+            if (m.bot_service) {
+              botIndicator = `<span class="bot-indicator">[${m.bot_service}]</span>`;
+            }
+          } else if (m.message_type === "agent" || m.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "👤 Atendente";
+          } else if (m.message_type === "customer" || m.sender === "customer") {
+            msgClass = "message";
+            senderDisplay = "👨‍💼 Cliente";
+          } else if (m.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "👤 Atendente";
+          }
+
           const timeStr = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           return `
             <div class="${msgClass}">
-              <span class="sender"><strong>${m.sender}:</strong> ${m.content}</span><br>
+              <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${m.content}</span><br>
               <small style="font-size: 10px; color: gray;">${timeStr}</small>
             </div>
           `;
