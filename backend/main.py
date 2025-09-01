@@ -15,8 +15,8 @@ from pydantic import BaseModel
 from dotenv import load_dotenv 
 from datetime import timezone
 from sqlalchemy import text, inspect
-from enhanced_chatbot_service import EnhancedClaudeChatbotService
-from models import User, Conversation, Message, AuditLog, BotInteraction, BotContext, Usuario, brazilian_now
+from backend.enhanced_chatbot_service import EnhancedClaudeChatbotService
+from backend.models import User, Conversation, Message, AuditLog, BotInteraction, BotContext, Usuario, brazilian_now
 
 import httpx
 import os
