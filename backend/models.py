@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import pytz
 
 # Brazilian timezone
@@ -29,8 +29,10 @@ class Conversation(SQLModel, table=True):
 class Message(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     conversation_id: int = Field(foreign_key="conversation.id")
-    sender: str
+    sender: str  # "customer", "agent", "bot", "system"
+    message_type: str = "customer"  # "customer", "agent", "bot", "system"
     content: str
+    bot_service: Optional[str] = None  # "claude", "ollama", "rasa", "fallback"
     timestamp: datetime = Field(default_factory=brazilian_now)
 
 class AuditLog(SQLModel, table=True):
@@ -52,6 +54,18 @@ class BotInteraction(SQLModel, table=True):
     escalation_reason: Optional[str] = None
     timestamp: datetime = Field(default_factory=brazilian_now)
     response_time_ms: Optional[int] = None
+
+class BotContext(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    phone_number: str = Field(unique=True)
+    conversation_stage: str = "greeting"
+    user_intent: Optional[str] = None
+    collected_info: Optional[str] = None  # JSON string
+    bot_responses_count: int = 0
+    escalation_requested: bool = False
+    escalation_reason: Optional[str] = None
+    last_updated: datetime = Field(default_factory=brazilian_now)
+    expires_at: datetime = Field(default_factory=lambda: brazilian_now() + timedelta(hours=2))
 
 class Usuario(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
