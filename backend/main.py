@@ -411,6 +411,10 @@ except:
 
 # Rotas
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
 @app.post("/cadastrar")
 async def cadastrar(
     nome: str = Form(...),
