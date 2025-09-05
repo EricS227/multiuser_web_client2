@@ -23,6 +23,7 @@ import os
 import asyncio
 import requests
 import anthropic
+import uvicorn
 
 load_dotenv()
 
@@ -138,7 +139,8 @@ if not SECRET_KEY:
     import secrets
     SECRET_KEY = secrets.token_urlsafe(32)
     print("WARNING: No SECRET_KEY found in environment. Generated temporary secret key.")
-    print("For production, set SECRET_KEY environment variable in Railway dashboard:")
+    print("For production, set SECRET_KEY environment variable in your deployment platform.")
+    print(f"Generated SECRET_KEY: {SECRET_KEY}")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -184,11 +186,11 @@ class ConnectionManager:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
 
-    async def send_personal_message(self, message: dict, recipienet_number: str):
+    async def send_personal_message(self, message: dict, recipient_number: str):
         for connection in self.active_connections:
             try:
                 await connection.send_json({
-                    "to": recipienet_number,
+                    "to": recipient_number,
                     **message
                 })
             except Exception:
@@ -308,6 +310,12 @@ def get_session():
         yield session
     finally:
         session.close()
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 
 
 
@@ -1283,3 +1291,8 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 # Only mount static files if directory exists
 if os.path.exists(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
