@@ -445,23 +445,10 @@ except:
 
 @app.get("/health")
 async def health_check():
-    try:
-        # Test database connectivity
-        with Session(engine) as session:
-            session.exec(text("SELECT 1"))
-        
-        return {
-            "status": "healthy", 
-            "timestamp": datetime.now().isoformat(),
-            "database": "connected"
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy", 
-            "timestamp": datetime.now().isoformat(),
-            "database": "disconnected",
-            "error": str(e)
-        }
+    return {
+        "status": "ok",
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.post("/cadastrar")
 async def cadastrar(
