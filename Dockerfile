@@ -24,9 +24,8 @@ COPY static/ ./static/
 # Add current directory to Python path
 ENV PYTHONPATH=/app
 
-# Expose port (Railway will override with PORT env var)
-EXPOSE $PORT
+# Railway sets PORT automatically
 EXPOSE 8000
 
-# Start the application
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Start the application (always respect Railway's $PORT)
+CMD uvicorn backend.main:app --host 0.0.0.0 --port $PORT
