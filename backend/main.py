@@ -27,7 +27,10 @@ import uvicorn
 
 load_dotenv()
 
+print("Starting FastAPI application...")
+
 app = FastAPI()
+print("FastAPI app initialized successfully")
 
 # CORS - Configure for production
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
@@ -41,8 +44,16 @@ app.add_middleware(
 )
 
 # Banco de dados - Railway compatible
+print("Setting up database connection...")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chatwoot_clone.db")
-engine = create_engine(DATABASE_URL, echo=False)  # Disable echo in production
+print(f"Database URL: {DATABASE_URL}")
+
+try:
+    engine = create_engine(DATABASE_URL, echo=False)  # Disable echo in production
+    print("Database engine created successfully")
+except Exception as e:
+    print(f"Error creating database engine: {e}")
+    raise
 
 
 
@@ -147,13 +158,25 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # Import Twilio configuration from config.py
-from backend.config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM
+print("Loading Twilio configuration...")
+try:
+    from backend.config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM
+    print("Twilio config loaded successfully")
+except Exception as e:
+    print(f"Error loading Twilio config: {e}")
+    TWILIO_ACCOUNT_SID = None
+    TWILIO_AUTH_TOKEN = None
+    TWILIO_WHATSAPP_FROM = None
 
 # Initialize Twilio client if credentials are provided
 twilio_client = None
 if TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN:
-    twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-    print("Twilio WhatsApp integration enabled")
+    try:
+        twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        print("Twilio WhatsApp integration enabled")
+    except Exception as e:
+        print(f"Error initializing Twilio client: {e}")
+        twilio_client = None
 else:
     print("Twilio credentials not configured - WhatsApp features disabled")
 
@@ -211,7 +234,13 @@ class MessagePayload(BaseModel):
     message: str
 
 # Cria as tabelas no banco
-SQLModel.metadata.create_all(engine)
+print("Creating database tables...")
+try:
+    SQLModel.metadata.create_all(engine)
+    print("Database tables created successfully")
+except Exception as e:
+    print(f"Error creating database tables: {e}")
+    raise
 
 
 
@@ -310,11 +339,6 @@ def get_session():
         yield session
     finally:
         session.close()
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
 
 
 
@@ -421,7 +445,23 @@ except:
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    try:
+        # Test database connectivity
+        with Session(engine) as session:
+            session.exec(text("SELECT 1"))
+        
+        return {
+            "status": "healthy", 
+            "timestamp": datetime.now().isoformat(),
+            "database": "connected"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy", 
+            "timestamp": datetime.now().isoformat(),
+            "database": "disconnected",
+            "error": str(e)
+        }
 
 @app.post("/cadastrar")
 async def cadastrar(
@@ -676,6 +716,11 @@ async def query_ollama_bot(message: str, model: str = "mistral"):
 async def whatsapp_webhook(request: Request):
     """Enhanced WhatsApp webhook with Claude AI integration"""
     try:
+        # Check if Twilio is configured
+        if not twilio_client:
+            print("WARNING: WhatsApp webhook received but Twilio is not configured")
+            return {"status": "disabled", "message": "WhatsApp integration disabled - Twilio not configured"}
+        
         # Parse form data
         form_data = await request.form()
         from_number = form_data.get("From", "").replace("whatsapp:", "")
@@ -1291,7 +1336,12 @@ STATIC_DIR = os.path.join(BASE_DIR, "static")
 # Only mount static files if directory exists
 if os.path.exists(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+    print(f"Static files mounted from: {STATIC_DIR}")
+else:
+    print(f"Static directory not found: {STATIC_DIR}")
 
+print("FastAPI application startup completed successfully!")
+print("All routes and endpoints are now available.")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
