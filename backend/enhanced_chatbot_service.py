@@ -6,7 +6,10 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from sqlmodel import Session, select
 from backend.models import Message, Conversation, BotContext, brazilian_now
-import anthropic
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
 
 class DatabaseContextManager:
     """Manages conversation context with database persistence"""
@@ -312,12 +315,14 @@ class EnhancedClaudeChatbotService:
         # Initialize Claude client
         self.claude_api_key = os.getenv("ANTHROPIC_API_KEY")
         self.claude_client = None
-        if self.claude_api_key:
+        if self.claude_api_key and anthropic:
             try:
                 self.claude_client = anthropic.Anthropic(api_key=self.claude_api_key)
                 print("Claude API initialized successfully")
             except Exception as e:
                 print(f"Failed to initialize Claude API: {e}")
+        elif not anthropic:
+            print("Anthropic package not available - Claude chatbot disabled")
         else:
             print("Claude API key not found - using fallback bot only")
     
