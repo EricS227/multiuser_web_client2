@@ -445,10 +445,24 @@ except:
 
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat()
-    }
+    try:
+        # Test database connectivity
+        with Session(engine) as session:
+            session.exec(text("SELECT 1"))
+        
+        return {
+            "status": "healthy", 
+            "timestamp": datetime.now().isoformat(),
+            "database": "connected",
+            "service": "chatwoot-clone"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy", 
+            "timestamp": datetime.now().isoformat(),
+            "database": "disconnected",
+            "error": str(e)
+        }
 
 @app.post("/cadastrar")
 async def cadastrar(
@@ -1331,5 +1345,5 @@ print("FastAPI application startup completed successfully!")
 print("All routes and endpoints are now available.")
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=port, reload=False)
