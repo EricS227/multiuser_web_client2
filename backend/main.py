@@ -22,7 +22,10 @@ import httpx
 import os
 import asyncio
 import requests
-import anthropic
+try:
+    import anthropic
+except ImportError:
+    anthropic = None
 import uvicorn
 
 load_dotenv()
@@ -1090,7 +1093,7 @@ def get_chatbot_status(user: User = Depends(get_current_user)):
             
             # Check Claude API
             claude_api_key = os.getenv("ANTHROPIC_API_KEY")
-            if claude_api_key:
+            if claude_api_key and anthropic:
                 try:
                     claude_client = anthropic.Anthropic(api_key=claude_api_key)
                     # Simple test call
