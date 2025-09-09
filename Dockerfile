@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy requirements.txt first for better Docker layer caching
-COPY backend/requirements.txt ./
+COPY requirements.txt ./
 
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
@@ -20,6 +20,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the application code
 COPY backend/ ./backend/
 COPY static/ ./static/
+
+# Create data directory for SQLite database
+RUN mkdir -p /app/data
 
 # Add current directory to Python path
 ENV PYTHONPATH=/app
