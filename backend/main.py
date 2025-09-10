@@ -1240,7 +1240,7 @@ def get_chatbot_analytics(user: User = Depends(get_current_user), session: Sessi
 
 @app.post("/fake-conversation")
 def create_fake(session: Session = Depends(get_session)):
-    new = Conversation(customer_number="+55119999999", status="pending")
+    new = Conversation(customer_number="+554196950370", status="pending")  # Use your real number
     session.add(new)
     session.commit()
     session.refresh(new)
