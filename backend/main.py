@@ -521,8 +521,15 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
 @app.get("/conversations")
 def get_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     if user.role == "admin":
-        return session.exec(select(Conversation)).all()
-    return session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
+        conversations = session.exec(select(Conversation)).all()
+    else:
+        conversations = session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
+    
+    # Debug logging
+    for conv in conversations:
+        print(f"Conversation {conv.id}: customer_number={conv.customer_number}, name={conv.name}, status={conv.status}")
+    
+    return conversations
 
 
 
@@ -874,7 +881,7 @@ async def whatsapp_webhook(request: Request):
                         system_user = User(
                             email="system@internal",
                             name="System Bot",
-                            password_hash="system_internal_password",
+                            password_hash=hash_password("system_internal_password"),
                             role="system"
                         )
                         session.add(system_user)
@@ -892,7 +899,9 @@ async def whatsapp_webhook(request: Request):
                     session.commit()
                     session.refresh(existing_conversation)
                     
-                    print(f"Created new conversation {existing_conversation.id} for bot interaction with {from_number}")
+                    print(f"Created new conversation {existing_conversation.id} for bot interaction")
+                    print(f"Customer details: number={from_number}, name={profile_name}")
+                    print(f"Stored conversation: id={existing_conversation.id}, customer_number={existing_conversation.customer_number}, name={existing_conversation.name}")
                 
                 # Save customer message first
                 customer_msg = Message(
