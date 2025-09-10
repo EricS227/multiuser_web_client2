@@ -791,35 +791,60 @@ async def whatsapp_webhook(request: Request):
                 chatbot_service = EnhancedClaudeChatbotService(session)
                 escalation_message = chatbot_service.get_escalation_message(escalation_reason, profile_name)
             
-            # Create or find existing conversation
+            # Create or find existing conversation with full history preservation
             with Session(engine) as session:
-                # Check if conversation already exists
-                conversation = session.exec(
+                # Check if conversation already exists (including any bot-only conversations)
+                existing_conversation = session.exec(
                     select(Conversation).where(
                         Conversation.customer_number == from_number,
                         Conversation.status.in_(["pending", "active"])
                     )
                 ).first()
 
-                if not conversation:
-                    # Create new conversation
+                if existing_conversation:
+                    # Use existing conversation and escalate it
+                    conversation = existing_conversation
+                    agent = get_least_busy_agent(session)
+                    
+                    # Update conversation for escalation
+                    conversation.status = "active"  # Escalate to active status
+                    if agent and not conversation.assigned_to:
+                        conversation.assigned_to = agent.id
+                        print(f"Escalating existing conversation {conversation.id} to agent {agent.name}")
+                    else:
+                        print(f"Escalating existing conversation {conversation.id} (already assigned)")
+                        
+                    session.add(conversation)
+                    session.commit()
+                else:
+                    # Create new conversation for escalation
                     agent = get_least_busy_agent(session)
                     system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                    if not system_user:
+                        system_user = User(
+                            email="system@internal",
+                            name="System Bot",
+                            password_hash=hash_password("system_internal_password"),
+                            role="system"
+                        )
+                        session.add(system_user)
+                        session.commit()
+                        session.refresh(system_user)
                     
                     conversation = Conversation(
                         customer_number=from_number,
                         name=profile_name,
                         assigned_to=agent.id if agent else None,
                         created_by=agent.id if agent else system_user.id,
-                        status="active",  # Change from pending to active when escalated
+                        status="active",  # Start as active since it's escalated
                     )
                     session.add(conversation)
                     session.commit()
                     session.refresh(conversation)
                     
-                    print(f"Created conversation {conversation.id}, assigned to agent {agent.name if agent else 'None'}")
+                    print(f"Created NEW escalated conversation {conversation.id}, assigned to agent {agent.name if agent else 'None'}")
 
-                # Save customer message with proper message type
+                # Save current customer message (the escalation request)
                 customer_msg = Message(
                     conversation_id=conversation.id,
                     sender="customer",
@@ -856,9 +881,14 @@ async def whatsapp_webhook(request: Request):
                     except Exception as e:
                         print(f"Error broadcasting bot message: {e}")
 
-                # Notify agents via WebSocket
+                # Notify agents via WebSocket with enhanced info
                 try:
-                    asyncio.create_task(manager.broadcast({
+                    # Count previous messages in this conversation for context
+                    message_count = session.exec(
+                        select(Message).where(Message.conversation_id == conversation.id)
+                    ).count()
+                    
+                    escalation_data = {
                         "type": "new_escalation",
                         "id": customer_msg.id,
                         "conversation_id": conversation.id,
@@ -869,8 +899,15 @@ async def whatsapp_webhook(request: Request):
                         "customer_number": from_number,
                         "timestamp": customer_msg.timestamp.isoformat(),
                         "escalation_reason": escalation_reason,
-                        "bot_service": bot_service
-                    }))
+                        "bot_service": bot_service,
+                        "message_history_count": message_count,
+                        "conversation_status": conversation.status,
+                        "assigned_agent": conversation.assigned_to
+                    }
+                    
+                    asyncio.create_task(manager.broadcast(escalation_data))
+                    print(f"Broadcasted escalation notification with {message_count} previous messages")
+                    
                 except Exception as e:
                     print(f"Error notifying agents: {e}")
             
