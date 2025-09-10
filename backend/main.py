@@ -166,10 +166,12 @@ try:
     from backend.config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM
     print("Twilio config loaded successfully")
 except Exception as e:
-    print(f"Error loading Twilio config: {e}")
-    TWILIO_ACCOUNT_SID = None
-    TWILIO_AUTH_TOKEN = None
-    TWILIO_WHATSAPP_FROM = None
+    print(f"Error loading Twilio config from config.py: {e}")
+    print("Loading Twilio config directly from environment variables...")
+    # Fallback to direct environment loading
+    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+    TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+    TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
 
 # Initialize Twilio client if credentials are provided
 twilio_client = None
