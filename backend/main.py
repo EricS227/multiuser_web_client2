@@ -526,8 +526,9 @@ def get_conversations(session: Session = Depends(get_session), user: User = Depe
         conversations = session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
     
     # Debug logging
+    print(f"API RESPONSE - Returning {len(conversations)} conversations:")
     for conv in conversations:
-        print(f"Conversation {conv.id}: customer_number={conv.customer_number}, name={conv.name}, status={conv.status}")
+        print(f"  Conversation {conv.id}: customer_number='{conv.customer_number}', name='{conv.name}', status='{conv.status}'")
     
     return conversations
 
@@ -738,9 +739,25 @@ async def whatsapp_webhook(request: Request):
         form_data = await request.form()
         from_number = form_data.get("From", "").replace("whatsapp:", "")
         message_body = form_data.get("Body", "")
-        profile_name = form_data.get("ProfileName", "Cliente")
+        raw_profile_name = form_data.get("ProfileName")
+        
+        # Generate a better customer name
+        if raw_profile_name and raw_profile_name.lower() not in ["none", "null", ""]:
+            profile_name = raw_profile_name
+        else:
+            # Generate fallback name from phone number
+            if from_number:
+                # Extract last 4 digits for a friendly name
+                last_digits = from_number[-4:] if len(from_number) >= 4 else from_number
+                profile_name = f"Cliente {last_digits}"
+            else:
+                profile_name = "Cliente Desconhecido"
 
-        print(f"MESSAGE received from {from_number}: {message_body}")
+        print(f"WEBHOOK DEBUG - Received:")
+        print(f"  From: {from_number}")
+        print(f"  Raw ProfileName: '{raw_profile_name}'")
+        print(f"  Final ProfileName: '{profile_name}'")
+        print(f"  Message: {message_body}")
 
         if not from_number or not message_body:
             return {"status": "error", "message": "Missing data"}
