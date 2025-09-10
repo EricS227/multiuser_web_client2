@@ -401,11 +401,6 @@ def send_whatsapp_message(to_number: str, message: str):
         print("Twilio not configured - cannot send WhatsApp message")
         return None
     
-    # Debug logging
-    print(f"DEBUG: Sending WhatsApp message using SID: {TWILIO_ACCOUNT_SID}")
-    print(f"DEBUG: From number: {TWILIO_WHATSAPP_FROM}")
-    print(f"DEBUG: To number: whatsapp:{to_number}")
-    
     try:
         msg = twilio_client.messages.create(
             body=message,
@@ -416,7 +411,6 @@ def send_whatsapp_message(to_number: str, message: str):
         return msg.sid
     except Exception as e:
         print(f"Error sending WhatsApp message: {e}")
-        print(f"DEBUG: Exception type: {type(e).__name__}")
         return None
 
 def get_least_busy_agent(session: Session):
@@ -869,35 +863,88 @@ async def whatsapp_webhook(request: Request):
             with Session(engine) as session:
                 existing_conversation = session.exec(
                     select(Conversation).where(Conversation.customer_number == from_number)
-                    .where(Conversation.status == "pending")
+                    .where(Conversation.status.in_(["pending", "active"]))
                 ).first()
                 
-                if existing_conversation:
-                    # Save bot response to existing conversation
-                    bot_msg = Message(
-                        conversation_id=existing_conversation.id,
-                        sender="bot",
-                        message_type="bot", 
-                        content=bot_response,
-                        bot_service=bot_service
-                    )
-                    session.add(bot_msg)
-                    session.commit()
+                # Create conversation if none exists (for bot-only interactions)
+                if not existing_conversation:
+                    system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                    if not system_user:
+                        # Create system user if it doesn't exist
+                        system_user = User(
+                            email="system@internal",
+                            name="System Bot",
+                            password_hash="system_internal_password",
+                            role="system"
+                        )
+                        session.add(system_user)
+                        session.commit()
+                        session.refresh(system_user)
                     
-                    # Broadcast bot message to WebSocket clients
-                    try:
-                        asyncio.create_task(manager.broadcast({
-                            "id": bot_msg.id,
-                            "conversation_id": existing_conversation.id,
-                            "sender": "bot",
-                            "message_type": "bot",
-                            "message": bot_response,
-                            "content": bot_response,
-                            "bot_service": bot_service,
-                            "timestamp": bot_msg.timestamp.isoformat()
-                        }))
-                    except Exception as e:
-                        print(f"Error broadcasting bot message: {e}")
+                    # Create new conversation for bot interaction
+                    existing_conversation = Conversation(
+                        customer_number=from_number,
+                        name=profile_name,
+                        created_by=system_user.id,
+                        status="pending"  # Keep as pending so agents can see it
+                    )
+                    session.add(existing_conversation)
+                    session.commit()
+                    session.refresh(existing_conversation)
+                    
+                    print(f"Created new conversation {existing_conversation.id} for bot interaction with {from_number}")
+                
+                # Save customer message first
+                customer_msg = Message(
+                    conversation_id=existing_conversation.id,
+                    sender="customer",
+                    message_type="customer",
+                    content=message_body
+                )
+                session.add(customer_msg)
+                session.commit()
+                
+                # Save bot response to conversation
+                bot_msg = Message(
+                    conversation_id=existing_conversation.id,
+                    sender="bot",
+                    message_type="bot", 
+                    content=bot_response,
+                    bot_service=bot_service
+                )
+                session.add(bot_msg)
+                session.commit()
+                
+                # Broadcast customer message to WebSocket clients
+                try:
+                    asyncio.create_task(manager.broadcast({
+                        "id": customer_msg.id,
+                        "conversation_id": existing_conversation.id,
+                        "sender": "customer",
+                        "message_type": "customer",
+                        "message": message_body,
+                        "content": message_body,
+                        "customer_name": profile_name,
+                        "customer_number": from_number,
+                        "timestamp": customer_msg.timestamp.isoformat()
+                    }))
+                except Exception as e:
+                    print(f"Error broadcasting customer message: {e}")
+                
+                # Broadcast bot message to WebSocket clients
+                try:
+                    asyncio.create_task(manager.broadcast({
+                        "id": bot_msg.id,
+                        "conversation_id": existing_conversation.id,
+                        "sender": "bot",
+                        "message_type": "bot",
+                        "message": bot_response,
+                        "content": bot_response,
+                        "bot_service": bot_service,
+                        "timestamp": bot_msg.timestamp.isoformat()
+                    }))
+                except Exception as e:
+                    print(f"Error broadcasting bot message: {e}")
             
             # Send bot response
             try:
