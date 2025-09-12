@@ -14,7 +14,7 @@ def reset_database():
     print("=" * 30)
     
     # Database path
-    db_path = "./chatwoot_clone.db"
+    db_path = "./chatapp.db"
     
     # Backup existing database
     if os.path.exists(db_path):
@@ -26,7 +26,7 @@ def reset_database():
             print(f"Warning: Could not backup database: {e}")
     
     # Create new database
-    DATABASE_URL = "sqlite:///./chatwoot_clone.db"
+    DATABASE_URL = "sqlite:///./chatapp.db"
     engine = create_engine(DATABASE_URL, echo=True)
     
     print("Creating new database tables...")
