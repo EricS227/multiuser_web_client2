@@ -9,7 +9,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 # Database - Railway compatible (PostgreSQL preferred for production)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chatwoot_clone.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chatapp.db")
 
 # Handle Railway PostgreSQL URL format
 if DATABASE_URL.startswith("postgres://"):
