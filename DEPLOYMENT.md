@@ -29,47 +29,92 @@ This guide explains how to deploy your FastAPI Chat Application to various hosti
 
 ## ☁️ Cloud Hosting Options
 
-### 1. **Railway** (Recommended for beginners)
+### 1. **Render** (Recommended for beginners)
 - Easy deployment with GitHub integration
-- Automatic HTTPS
-- Built-in database options
+- Automatic HTTPS and SSL
+- Free tier available
+- Docker support
+
+**Quick Deploy:**
+1. Connect your GitHub repo to Render
+2. Choose "Web Service" and select Docker
+3. Set build command: `docker build -t app .`
+4. Set start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+5. Add environment variables in Render dashboard
+
+**Environment Setup:**
+Add these variables in Render dashboard:
+- `SECRET_KEY`: Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+- `DATABASE_URL`: Add PostgreSQL service (Render provides automatically)
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (optional)
+- `ANTHROPIC_API_KEY` (optional, for enhanced chatbot)
+
+### 2. **Fly.io** (Great for FastAPI)
+- Excellent FastAPI support
+- Global deployment
+- Free tier with generous limits
+- Docker-native
 
 **Quick Deploy:**
 ```bash
-# Install Railway CLI
-npm install -g @railway/cli
+# Install Fly CLI
+curl -L https://fly.io/install.sh | sh
 
 # Login and deploy
-railway login
-railway init
-railway up
+fly auth login
+fly launch
+fly deploy
 ```
 
-**Environment Setup:**
-1. Run the setup script: `chmod +x railway-setup.sh && ./railway-setup.sh`
-2. Or manually add these variables in Railway dashboard:
-   - `SECRET_KEY`: Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`
-   - `DATABASE_URL`: Add PostgreSQL service (Railway provides automatically)
-   - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (optional)
-
-**Important:** The application now includes automatic SECRET_KEY generation if not provided, but for production security, always set a fixed SECRET_KEY in Railway's environment variables.
-
-### 2. **DigitalOcean App Platform**
+### 3. **DigitalOcean App Platform**
 - Simple deployment
 - Managed database options
 - Automatic scaling
+- $5/month starter tier
 
-### 3. **AWS EC2**
-- More control and customization
-- Cost-effective for larger applications
+**Deploy Steps:**
+1. Connect GitHub repo
+2. Choose "Web Service"
+3. Set build command: `pip install -r backend/requirements.txt`
+4. Set run command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+5. Add environment variables
 
-### 4. **Google Cloud Run**
+### 4. **Vercel** (Serverless option)
+- Serverless FastAPI deployment
+- Free tier available
+- Edge functions support
+
+**Setup:**
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Deploy
+vercel
+```
+
+### 5. **Google Cloud Run**
 - Serverless container platform
 - Pay-per-use pricing
+- Auto-scaling
 
-### 5. **Heroku**
-- Easy deployment with git
-- Add-ons for databases and services
+### 6. **AWS App Runner / Elastic Beanstalk**
+- Managed container service
+- Auto-scaling and load balancing
+- Integration with other AWS services
+
+### 7. **VPS Options** (Most cost-effective)
+- **DigitalOcean Droplets**: $4-6/month
+- **Linode**: $5/month VPS
+- **Vultr**: $2.50/month starter
+
+**VPS Setup:**
+```bash
+# On your VPS
+git clone your-repo
+cd your-project
+./deploy.sh
+```
 
 ## 🔧 Production Configuration
 
@@ -78,7 +123,7 @@ Copy `.env.example` to `.env` and configure:
 
 ```env
 SECRET_KEY=your-very-secure-secret-key
-DATABASE_URL=sqlite:///./data/chatwoot_clone.db
+DATABASE_URL=sqlite:///./data/chatapp.db
 TWILIO_ACCOUNT_SID=your-twilio-sid
 TWILIO_AUTH_TOKEN=your-twilio-token
 TWILIO_WHATSAPP_FROM=whatsapp:+your-number
@@ -124,7 +169,7 @@ docker-compose logs -f web
 ### Database Backup
 Backup SQLite database:
 ```bash
-docker-compose exec web cp /app/data/chatwoot_clone.db /app/backup.db
+docker-compose exec web cp /app/data/chatapp.db /app/backup.db
 ```
 
 ## 🔒 Security Considerations
