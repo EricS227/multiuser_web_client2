@@ -1,0 +1,199 @@
+{
+  "name": "Whatsapp Chat",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "chat",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "4b728875-ae28-4a6c-a25e-691e6e9a801f",
+      "name": "Whatsapp Chat",
+      "webhookId": "08995bb1-06bb-4314-bd1d-a6797cc1984a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Debug input data\n  console.log(\"Input data:\", JSON.stringify($input.first()));\n\n  const webhookData = $input.first()?.json || {};\n  console.log(\"Webhook data:\", JSON.stringify(webhookData));\n\n// Enhanced WhatsApp Message Classification & Routing\n\n  // Extract message data with safe fallbacks\n  const from = webhookData.From || webhookData.from || \"\";\n  const message = (webhookData.Body || webhookData.message || \"\").toLowerCase().trim();\n  const profileName = webhookData.ProfileName || webhookData.profile_name || \"Cliente\";\n// Message Classification\nfunction classifyMessage(msg) {\n  // Greetings\n  if (msg.includes('oi') || msg.includes('olá') || msg.includes('hello') || msg.includes('hi') ||\n      msg.includes('bom dia') || msg.includes('boa tarde') || msg.includes('boa noite')) {\n    return 'greeting';\n  }\n\n  // FAQ queries\n  if (msg.includes('horário') || msg.includes('funcionamento') || msg.includes('aberto') ||\n      msg.includes('fechado') || msg.includes('hours') || msg.includes('open')) {\n    return 'business_hours';\n  }\n\n  if (msg.includes('endereço') || msg.includes('localização') || msg.includes('address') ||\n      msg.includes('location')) {\n    return 'location';\n  }\n\n  if (msg.includes('preço') || msg.includes('valor') || msg.includes('quanto') ||\n      msg.includes('price') || msg.includes('cost') || msg.includes('custo')) {\n    return 'pricing';\n  }\n\n  if (msg.includes('serviço') || msg.includes('produto') || msg.includes('o que é') || msg.includes('what')) {\n    return 'services';\n  }\n\n  // Support requests\n  if (msg.includes('ajuda') || msg.includes('help') || msg.includes('suporte') || msg.includes('support') ||\n      msg.includes('problema') || msg.includes('issue') || msg.includes('erro') || msg.includes('error')) {\n    return 'support';\n  }\n\n  // Emergency/urgent\n  if (msg.includes('urgente') || msg.includes('emergency') || msg.includes('importante') ||\n      msg.includes('asap') || msg.includes('agora')) {\n    return 'urgent';\n  }\n\n  // General questions\n  if (msg.includes('?') || msg.includes('como') || msg.includes('quando') || msg.includes('por que') ||\n      msg.includes('why') || msg.includes('when')) {\n    return 'question';\n  }\n\n  return 'general';\n}\n\n// Business hours check (Brazil timezone)\nfunction isBusinessHours() {\n  const now = new Date(new Date().toLocaleString(\"en-US\", { timeZone: \"America/Sao_Paulo\" }));\n  const hour = now.getHours();\n  const day = now.getDay();\n\n  // Monday to Friday, 9 AM to 18 PM\n  return (day >= 1 && day <= 5 && hour >= 9 && hour < 18);\n}\n\n// Classify the message\nconst messageType = classifyMessage(message);\nconst businessHours = isBusinessHours();\n\n// Determine routing\nlet shouldAutoRespond = false;\nlet autoResponse = '';\n\n// Auto responses\nswitch (messageType) {\n  case 'greeting':\n    shouldAutoRespond = true;\n    autoResponse = `Olá ${profileName}! 👋 Bem-vindo! Como posso ajudá-lo hoje?`;\n    break;\n\n  case 'business_hours':\n    shouldAutoRespond = true;\n    autoResponse = '🕒 Nosso horário de funcionamento: Segunda a Sexta: 9h às 18h - Finais de semana: Fechado';\n    break;\n\n  case 'location':\n    shouldAutoRespond = true;\n    autoResponse = '📍 Nossa localização: [Adicione seu endereço aqui] - Pode nos encontrar facilmente!';\n    break;\n\n  case 'pricing':\n    shouldAutoRespond = true;\n    autoResponse = '💲 Para informações de valores e preços, nos informe o produto/serviço desejado.';\n    break;\n\n  case 'services':\n    shouldAutoRespond = true;\n    autoResponse = '📋 Oferecemos diversos serviços/produtos. Poderia especificar o que deseja saber?';\n    break;\n\n  case 'support':\n    shouldAutoRespond = false; // deve escalar\n    break;\n\n  case 'urgent':\n    shouldAutoRespond = false; // deve escalar imediatamente\n    break;\n\n  case 'question':\n    if (!businessHours) {\n      shouldAutoRespond = true;\n      autoResponse = `Olá ${profileName}! Recebemos sua pergunta, mas estamos fora do horário comercial (9h-18h, Seg-Sex). Responderemos assim que possível. 🌙`;\n    } else {\n      shouldAutoRespond = false; // deixar humano responder\n    }\n    break;\n\n  default:\n    if (!businessHours) {\n      shouldAutoRespond = true;\n      autoResponse = `Olá ${profileName}! Obrigado pela mensagem. Estamos fora do horário comercial (9h-18h, Seg-Sex). Responderemos assim que possível! 🌙`;\n    }\n    break;\n}\n\n// Return enhanced data\nreturn [{\n    json: {\n      from: from.replace('whatsapp:', ''),\n      classification: messageType,\n      response: autoResponse,\n      shouldEscalate: !shouldAutoRespond,\n      message: webhookData.Body || webhookData.message || \"\",\n      profile_name: profileName,\n      message_type: messageType,\n      business_hours: businessHours,\n      should_auto_respond: shouldAutoRespond,\n      auto_response: autoResponse,\n      workflow_id: \"intelligent_chat\",\n      execution_id: $execution.id,\n      timestamp: new Date().toISOString()\n    }\n}];\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        32,
+        0
+      ],
+      "id": "045a2a42-d060-42ef-93ef-60dcdb6cc183",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b894e469-a6ed-47dd-9d2d-edc3dbfefb65",
+              "leftValue": true,
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c8ac2987-d869-43e9-956f-44a193dd22a1",
+              "leftValue": false,
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        368,
+        0
+      ],
+      "id": "ea78c292-2efa-4703-a5a5-70f6bad027f0",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-railway-app.railway.app/webhook/n8n",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": " x-n8n-api-key",
+              "value": "chatapp_n8n_secret_key"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        736,
+        16
+      ],
+      "id": "b9ce2099-1a45-4959-8fbb-8e0c62d9670a",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/ACb4c4f9d115be10932a11320c9e11f3d6/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "whatsapp:+14155238886"
+            },
+            {
+              "name": "To",
+              "value": "=whatsapp:+5541996950370"
+            },
+            {
+              "name": "=Body",
+              "value": "= {{ $json.auto_response || \"Obrigado pela sua mensagem!\" }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        736,
+        -160
+      ],
+      "id": "6d15d88b-450c-4567-bc27-afddb0932dcf",
+      "name": "HTTP Request_twilio",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "UKGoB0v0PWqcK8Mp",
+          "name": "Unnamed credential"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Whatsapp Chat": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request_twilio",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9e17ae49-8d19-4a10-97a7-2178190d1d41",
+  "meta": {
+    "instanceId": "bca815d8ab6a5a0510708627884eb389a27553a6872d48e62e15f4d0e25acf1b"
+  },
+  "id": "z6iRG21JYbjRnHlC",
+  "tags": []
+}
