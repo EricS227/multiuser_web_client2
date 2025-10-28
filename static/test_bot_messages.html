@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Bot Messages</title>
+    <style>
+        .message {
+            max-width: 70%;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 15px;
+            word-wrap: break-word;
+            background-color: #f0f0f0;
+        }
+
+        .message.agent {
+            align-self: flex-end;
+            background-color: #e1f5fe;
+            border-bottom-left-radius: 0;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            background-color: #e8f5e8;
+            border-bottom-right-radius: 0;
+            border-left: 3px solid #4caf50;
+        }
+
+        .message.bot .sender {
+            color: #2e7d32;
+        }
+
+        .bot-indicator {
+            font-size: 12px;
+            color: #4caf50;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h2>Bot Message Test</h2>
+    <div class="container" id="messages">
+        <!-- Messages will be populated here -->
+    </div>
+
+    <script>
+        // Test messages with different types
+        const testMessages = [
+            {
+                id: 1,
+                sender: "customer",
+                message_type: "customer",
+                content: "Preciso de ajuda urgente",
+                bot_service: null
+            },
+            {
+                id: 2,
+                sender: "bot",
+                message_type: "bot",
+                content: "Perfeito! Vou conectar você com um atendente.",
+                bot_service: "escalation"
+            },
+            {
+                id: 3,
+                sender: "agent",
+                message_type: "agent",
+                content: "Olá! Como posso ajudar?",
+                bot_service: null
+            }
+        ];
+
+        function renderMessages() {
+            const container = document.getElementById('messages');
+            
+            testMessages.forEach(m => {
+                let msgClass = "message";
+                let senderDisplay = m.sender;
+                let botIndicator = "";
+
+                if (m.message_type === "bot" || m.sender === "bot") {
+                    msgClass = "message bot";
+                    senderDisplay = "Bot";
+                    if (m.bot_service) {
+                        botIndicator = `<span class="bot-indicator">[${m.bot_service}]</span>`;
+                    }
+                } else if (m.message_type === "agent" || m.sender === "agent") {
+                    msgClass = "message agent";
+                    senderDisplay = "Atendente";
+                } else if (m.message_type === "customer" || m.sender === "customer") {
+                    msgClass = "message";
+                    senderDisplay = "Cliente";
+                }
+
+                const messageDiv = document.createElement("div");
+                messageDiv.className = msgClass;
+                messageDiv.innerHTML = `
+                    <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${m.content}</span><br>
+                    <small style="font-size: 10px; color: gray;">Test message</small>
+                `;
+                
+                container.appendChild(messageDiv);
+            });
+        }
+
+        // Render messages when page loads
+        renderMessages();
+    </script>
+</body>
+</html>

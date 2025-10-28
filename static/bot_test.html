@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Bot Test Interface</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f1f2f7;
+            margin: 0;
+            padding: 20px;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .chat-header {
+            background: #4338ca;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 12px;
+            border-radius: 15px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .message.user {
+            background: #e3f2fd;
+            margin-left: auto;
+            text-align: right;
+        }
+        .message.bot {
+            background: #e8f5e8;
+            border-left: 3px solid #4caf50;
+        }
+        .message.escalation {
+            background: #fff3e0;
+            border-left: 3px solid #ff9800;
+            font-style: italic;
+        }
+        .chat-input {
+            display: flex;
+            padding: 20px;
+            gap: 10px;
+        }
+        .chat-input input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+        }
+        .chat-input input:focus {
+            border-color: #4338ca;
+        }
+        .chat-input button {
+            background: #4338ca;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+        .chat-input button:hover {
+            background: #3730a3;
+        }
+        .test-buttons {
+            display: flex;
+            gap: 10px;
+            padding: 10px 20px;
+            flex-wrap: wrap;
+        }
+        .test-btn {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .test-btn:hover {
+            background: #5a6268;
+        }
+        .status {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #eee;
+            font-size: 12px;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2>🤖 Teste do Chatbot</h2>
+            <p>Simule conversas WhatsApp → Bot → Agente</p>
+        </div>
+        
+        <div class="test-buttons">
+            <button class="test-btn" onclick="sendTestMessage('Olá, tudo bem?')">👋 Cumprimento</button>
+            <button class="test-btn" onclick="sendTestMessage('Preciso de ajuda urgente!')">🚨 Urgente</button>
+            <button class="test-btn" onclick="sendTestMessage('Quero falar com um atendente')">👤 Solicitar Atendente</button>
+            <button class="test-btn" onclick="sendTestMessage('Tenho um problema serio')">❗ Problema</button>
+            <button class="test-btn" onclick="sendTestMessage('Obrigado')">🙏 Agradecimento</button>
+            <button class="test-btn" onclick="clearChat()">🗑️ Limpar</button>
+        </div>
+        
+        <div class="chat-messages" id="messages"></div>
+        
+        <div class="status" id="status">
+            Pronto para testar. Digite uma mensagem ou use os botões de teste.
+        </div>
+        
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="Digite sua mensagem como se fosse WhatsApp..." maxlength="500">
+            <button onclick="sendMessage()">📱 Enviar</button>
+        </div>
+    </div>
+
+    <script>
+        let testPhoneNumber = '+5511999887766'; 
+        let conversationCount = 0;
+        
+        function addMessage(content, type = 'user', extra = '') {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            
+            if (type === 'bot') {
+                messageDiv.innerHTML = `<strong>🤖 Bot:</strong> ${content}<br><small style="color:#666;">${timestamp} ${extra}</small>`;
+            } else if (type === 'escalation') {
+                messageDiv.innerHTML = `<strong>📢 Escalação:</strong> ${content}<br><small style="color:#666;">${timestamp}</small>`;
+            } else {
+                messageDiv.innerHTML = `<strong>👤 Você:</strong> ${content}<br><small style="color:#666;">${timestamp}</small>`;
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function updateStatus(message, isError = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.style.color = isError ? '#dc3545' : '#6c757d';
+        }
+        
+        async function sendMessage(message = null) {
+            const input = document.getElementById('messageInput');
+            const messageText = message || input.value.trim();
+            
+            if (!messageText) return;
+            
+            // Clear input
+            input.value = '';
+            
+            // Add user message
+            addMessage(messageText, 'user');
+            updateStatus('🤖 Processando com o bot...');
+            
+            try {
+                // Send to bot test endpoint
+                const response = await fetch('/test-bot', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        phone_number: testPhoneNumber,
+                        message: messageText,
+                        profile_name: 'Test User'
+                    })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Add bot response
+                    if (data.bot_response) {
+                        addMessage(data.bot_response, 'bot', `[${data.bot_service}]`);
+                    }
+                    
+                    // Handle escalation
+                    if (data.should_escalate) {
+                        conversationCount++;
+                        addMessage(`Conversa escalada para agente humano! Motivo: ${data.escalation_reason}. Verifique a interface do agente.`, 'escalation');
+                        updateStatus(`✅ Escalação realizada! Conversa #${conversationCount} criada para os agentes.`);
+                        
+                        // Change phone number for next conversation
+                        testPhoneNumber = `+551199988${String(7766 + conversationCount).padStart(4, '0')}`;
+                    } else {
+                        updateStatus(`✅ Bot respondeu com sucesso (${data.bot_service})`);
+                    }
+                } else {
+                    const errorData = await response.json();
+                    addMessage(`Erro: ${errorData.message || 'Erro desconhecido'}`, 'escalation');
+                    updateStatus('❌ Erro ao conectar com o bot', true);
+                }
+            } catch (error) {
+                addMessage(`Erro de conexão: ${error.message}`, 'escalation');
+                updateStatus('❌ Erro de conexão com o servidor', true);
+            }
+        }
+        
+        function sendTestMessage(message) {
+            sendMessage(message);
+        }
+        
+        function clearChat() {
+            document.getElementById('messages').innerHTML = '';
+            conversationCount = 0;
+            testPhoneNumber = '+5511999887766';
+            updateStatus('Chat limpo! Pronto para uma nova conversa.');
+        }
+        
+        // Enter key support
+        document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        // Welcome message
+        window.onload = function() {
+            addMessage('Bem-vindo ao teste do chatbot! Este simulador permite testar o fluxo: Cliente → Bot → Agente', 'escalation');
+        };
+    </script>
+</body>
+</html>
