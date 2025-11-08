@@ -477,34 +477,43 @@ async def cadastrar(
     senha: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    print(f"=== CADASTRO REQUEST ===")
+    print(f"Nome: {nome}, Email: {email}")
     try:
         # Verificar se usuário já existe
         existing_user = db.exec(select(User).where(User.email == email)).first()
         if existing_user:
+            print(f"User already exists: {email}")
             raise HTTPException(status_code=400, detail="Usuário já existe com este email")
-        
+
         # Criar novo usuário na tabela User (não Usuario)
+        print("Creating new user...")
         novo_usuario = User(
             name=nome,
             email=email,
             password_hash=hash_password(senha),  # Hash da senha
             role="user"  # Role padrão
         )
-        
+
         db.add(novo_usuario)
         db.commit()
         db.refresh(novo_usuario)
-        
+        print(f"User created successfully: ID {novo_usuario.id}")
+
         return {
             "message": f"Usuário {novo_usuario.name} cadastrado com sucesso!",
             "status": "success",
             "user_id": novo_usuario.id,
             "redirect": True
         }
-        
-    except HTTPException:
+
+    except HTTPException as he:
+        print(f"HTTPException: {he.detail}")
         raise
     except Exception as e:
+        print(f"Exception during cadastro: {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
