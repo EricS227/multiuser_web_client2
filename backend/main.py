@@ -470,6 +470,45 @@ async def health_check():
             "error": str(e)
         }
 
+@app.post("/init-db")
+async def init_database(db: Session = Depends(get_db)):
+    """Initialize database with default admin user"""
+    try:
+        # Check if admin exists
+        existing = db.exec(select(User).where(User.email == "admin@test.com")).first()
+
+        if existing:
+            return {
+                "status": "exists",
+                "message": "Admin user already exists",
+                "email": "admin@test.com"
+            }
+
+        # Create default admin user
+        admin = User(
+            name="Admin",
+            email="admin@test.com",
+            password_hash=hash_password("admin123"),
+            role="admin"
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+
+        return {
+            "status": "created",
+            "message": "Admin user created successfully!",
+            "email": "admin@test.com",
+            "password": "admin123",
+            "note": "Please change password after first login"
+        }
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 @app.post("/cadastrar")
 async def cadastrar(
     nome: str = Form(...),
