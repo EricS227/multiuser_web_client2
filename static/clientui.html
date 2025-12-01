@@ -92,23 +92,117 @@
       max-width: 70%;
       margin: 5px 0;
       padding: 10px;
-      border-radius: 15px;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
       word-wrap: break-word;
-      background-color: #f0f0f0;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+
+
+    .message.customer {
+      align-self: flex-start;
+      background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+      border-radius: 18px 18px 18px 4px;
+      margin-right: auto;
     }
 
     .message.agent {
       align-self: flex-end;
-      background-color: #e1f5fe;
-      border-bottom-left-radius: 0;
+      background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+      border-radius: 18px 18px 4px 18px;
+      margin-left: auto;
+      border-left: none;
+      border-right: 3px solid #2196f3;
     }
 
     .message.bot {
       align-self: flex-start;
-      background-color: #e8f5e8;
-      border-bottom-right-radius: 0;
-      border-left: 3px solid #4caf50;
+      background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+      border-left: 4px solid #4caf50;
+      border-radius: 18px 18px 18px 4px;
+      margin-right: auto;
     }
+
+    .message-content-wrapper {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .message-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .message-text {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #212121;
+      word-break: break-word;
+    }
+
+    .message-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+      gap: 8px;
+    }
+
+    .message-timestamp {
+      font-size: 11px;
+      color: #757575;
+      font-weight: 400;
+    }
+
+    .message-status {
+      font-size: 12px;
+      color: #757575;
+    }
+
+    .message:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transform: translateY(-1px);
+      transition: all 0.2s ease;
+    }
+
+
+    .sender-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: #424242;
+    }
+
+    .bot-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .bot-badge.claude {
+    background: #9c27b0;
+    color: white;
+    }
+
+  .bot-badge.ollama {
+    background: #ff9800;
+    color: white;
+  }
+
+  .bot-badge.fallback {
+    background: #607d8b;
+    color: white;
+  }
 
     .message.bot .sender {
       color: #2e7d32;
@@ -156,6 +250,68 @@
       font-size: 0.8em;
       color: #555;
     }
+
+    /* Filter Section Styling */
+    .filter-section {
+      background-color: #f8f9fa;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      border: 1px solid #e9ecef;
+    }
+
+    .filter-section label {
+      font-weight: 600;
+      color: grey;
+      margin-right: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .filter-select {
+      background-color: white;
+      border: 2px solid #dee2e6;
+      border-radius: 5px;
+      padding: 0.5rem;
+      font-size: 0.9rem;
+      color: grey;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-width: 120px;
+    }
+
+    .filter-select:hover {
+      border-color: #4338ca;
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: #4338ca;
+      box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.2);
+    }
+
+    .clear-filter-btn {
+      background-color: #4338ca;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin-left: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .clear-filter-btn:hover {
+      background-color: #5a6268;
+      transform: translateY(-1px);
+    }
+
+    .filter-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
   </style>
 </head>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -167,7 +323,24 @@
   <main>
     <section>
       <h2>Conversas disponíveis</h2>
+      <div class="filter-section">
+        <div class="filter-controls">
+          <label for="conversation-filter">Filtro:</label>
+          <select id="conversation-filter" class="filter-select" onchange="filterConversations()">
+            <option value="all">📋 Todas</option>
+            <option value="active">🟢 Ativas</option>
+            <option value="escalated">🔥 Escaladas</option>
+          </select>
+          <button onclick="clearFilter()" class="clear-filter-btn">
+            🔄 Limpar
+          </button>
+        </div>
+      </div>
       <div id="all-conversations"></div>
+      <div id="bot-interactions" style="display:none;">
+        <h4>Interações Bot</h4>
+        <div id="bot-interactions-list"></div>
+      </div>
     </section>
     <section>
       <h2>Minhas conversas</h2>
@@ -211,7 +384,12 @@
 
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (!data.conversation_id || data.conversation_id !== currentConversationId) return; {
+        console.log("WebSocket message received:", JSON.stringify(data, null, 2));
+        if (!data.conversation_id || data.conversation_id !== currentConversationId) {
+          console.log("Message filtered out - conversation mismatch:", data.conversation_id, "vs", currentConversationId);
+          return;
+        }
+        {
           const chat = document.getElementById("chat-messages");
           const time = data.timestamp ? new Date(data.timestamp) : new Date();
           const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -220,26 +398,28 @@
           let botIndicator = "";
 
           if (data.message_type === "bot" || data.sender === "bot") {
+            console.log("Bot message detected:", data);
             msgClass = "message bot";
-            senderDisplay = "🤖 Bot";
+            senderDisplay = "Bot";
             if (data.bot_service) {
               botIndicator = `<span class="bot-indicator">[${data.bot_service}]</span>`;
             }
           } else if (data.message_type === "agent" || data.sender === "agent") {
             msgClass = "message agent";
-            senderDisplay = "👤 Atendente";
+            senderDisplay = "Atendente";
           } else if (data.message_type === "customer" || data.sender === "customer") {
             msgClass = "message";
-            senderDisplay = "👨‍💼 Cliente";
+            senderDisplay = "Cliente";
           } else if (data.sender === "agent") {
             msgClass = "message agent";
-            senderDisplay = "👤 Atendente";
+            senderDisplay = "Atendente";
           }
 
           const messageDiv = document.createElement("div");
           messageDiv.className = msgClass;
+          const messageContent = data.message || data.content || '';
           messageDiv.innerHTML = `
-            <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${data.message}</span><br>
+            <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${messageContent}</span><br>
             <small style="font-size: 10px; color: gray;">${timeStr}</small>
           `;
           
@@ -368,19 +548,19 @@
 
           if (m.message_type === "bot" || m.sender === "bot") {
             msgClass = "message bot";
-            senderDisplay = "🤖 Bot";
+            senderDisplay = "Bot";
             if (m.bot_service) {
               botIndicator = `<span class="bot-indicator">[${m.bot_service}]</span>`;
             }
           } else if (m.message_type === "agent" || m.sender === "agent") {
             msgClass = "message agent";
-            senderDisplay = "👤 Atendente";
+            senderDisplay = "Atendente";
           } else if (m.message_type === "customer" || m.sender === "customer") {
             msgClass = "message";
-            senderDisplay = "👨‍💼 Cliente";
+            senderDisplay = "Cliente";
           } else if (m.sender === "agent") {
             msgClass = "message agent";
-            senderDisplay = "👤 Atendente";
+            senderDisplay = "Atendente";
           }
 
           const timeStr = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -557,7 +737,7 @@
             Authorization: `Bearer ${token}`
           },
           body: JSON.stringify({
-            customer_number: "+5511999999",
+            customer_number: "+554196950370",  // Use your real WhatsApp number
             initial_message: "Olá, isso é um teste automático"
           })
         });
@@ -604,7 +784,7 @@
       function showToast(message, type="success") {
         Swal.fire({
           toast: true,
-          postion: 'top-end',
+          position: 'top-end',
           icon: type,
           title: message,
           showConfirmButton: false,
@@ -615,9 +795,87 @@
 
     
 
+    // Add clearFilter function  
+    function clearFilter() {
+      document.getElementById('conversation-filter').value = 'all';
+      fetchAllConversations();
+    }
+
     // Inicialização
     connectWebSocket();
     fetchMyConversations();
+    // Enhanced conversation filtering functions
+    async function fetchBotInteractions() {
+      try {
+        const res = await fetch("/bot-interactions", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          showError("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById("bot-interactions-list").innerHTML = data
+          .map(interaction => `
+            <div class="conversation">
+              <div><strong>${interaction.customer_name}</strong></div>
+              <div><small>${interaction.phone_number}</small></div>
+              <div>Pergunta: ${interaction.user_message}</div>
+              <div style="color: #2e7d32;">Bot: ${interaction.bot_response.substring(0, 100)}...</div>
+              <div><small>Bot: ${interaction.bot_type} | ${new Date(interaction.timestamp).toLocaleString()}</small></div>
+            </div>
+          `).join("");
+      } catch (error) {
+        console.error("Erro:", error);
+        document.getElementById("bot-interactions-list").innerHTML = "<p>Erro ao carregar interações bot</p>";
+      }
+    }
+
+    async function filterConversations() {
+      const filterType = document.getElementById('conversation-filter').value;
+      
+      if (filterType === 'bot_only') {
+        // Show bot interactions section
+        document.getElementById('all-conversations').style.display = 'none';
+        document.getElementById('bot-interactions').style.display = 'block';
+        fetchBotInteractions();
+      } else {
+        // Show regular conversations with filter
+        document.getElementById('all-conversations').style.display = 'block';
+        document.getElementById('bot-interactions').style.display = 'none';
+        
+        try {
+          const res = await fetch(`/conversations?filter_type=${filterType}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (res.status === 401) {
+            showError("Sessão expirada. Faça login novamente.");
+            localStorage.removeItem("access_token");
+            window.location.href = "index.html";
+            return;
+          }
+
+          const data = await res.json();
+          document.getElementById("all-conversations").innerHTML = data
+            .map(c => `
+              <div class="conversation" onclick="loadChat(${c.id})">
+                <div><strong>${c.name || c.customer_number}</strong></div>
+                <div>Status: ${c.status}</div>
+                <div><small>Criado: ${new Date(c.created_at).toLocaleString()}</small></div>
+              </div>
+            `).join("");
+        } catch (error) {
+          console.error("Erro:", error);
+          document.getElementById("all-conversations").innerHTML = "<p>Erro ao carregar conversas</p>";
+        }
+      }
+    }
+
     fetchAllConversations();
   </script>
 
