@@ -395,15 +395,11 @@
           const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           let msgClass = "message";
           let senderDisplay = data.sender;
-          let botIndicator = "";
 
           if (data.message_type === "bot" || data.sender === "bot") {
             console.log("Bot message detected:", data);
             msgClass = "message bot";
             senderDisplay = "Bot";
-            if (data.bot_service) {
-              botIndicator = `<span class="bot-indicator">[${data.bot_service}]</span>`;
-            }
           } else if (data.message_type === "agent" || data.sender === "agent") {
             msgClass = "message agent";
             senderDisplay = "Atendente";
@@ -415,12 +411,26 @@
             senderDisplay = "Atendente";
           }
 
+          let botBadgeHTML = '';
+          if ((data.message_type === "bot" || data.sender === "bot") && data.bot_service) {
+            const badgeClass = data.bot_service.toLowerCase();
+            botBadgeHTML = `<span class="bot-badge ${badgeClass}">${data.bot_service}</span>`;
+          }
+
           const messageDiv = document.createElement("div");
           messageDiv.className = msgClass;
           const messageContent = data.message || data.content || '';
           messageDiv.innerHTML = `
-            <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${messageContent}</span><br>
-            <small style="font-size: 10px; color: gray;">${timeStr}</small>
+          <div class="message-content-wrapper">
+            <div class="message-header">
+              <span class="sender-name">${senderDisplay}</span>
+              ${botBadgeHTML}
+            </div>
+            <div class="message-text">${messageContent}</div>
+            <div class="message-footer">
+              <span class="message-timestamp">${timeStr}</span>
+            </div>
+          </div>
           `;
           
           chat.appendChild(messageDiv);
@@ -562,12 +572,26 @@
             msgClass = "message agent";
             senderDisplay = "Atendente";
           }
+          
+          let botBadgeHTML = '';
+          if (m.message_type === "bot" && m.bot_service) {
+            const badgeClass = m.bot_service.toLowerCase();
+            botBadgeHTML =  `<span class="bot-badge ${badgeClass}">${m.bot_service}</span>`;
+          }
 
           const timeStr = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           return `
             <div class="${msgClass}">
-              <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${m.content}</span><br>
-              <small style="font-size: 10px; color: gray;">${timeStr}</small>
+              <div class="message-content-wrapper">
+                <div class="message-header">
+                  <span class="sender-name">${senderDisplay}</span>
+                  ${botBadgeHTML}
+                </div>
+                <div class="message-text">${m.content}</div>
+                <div class="message-footer">
+                  <span class="message-timestamp">${timeStr}</span>
+                </div>
+              </div>
             </div>
           `;
         }).join("");
@@ -632,9 +656,16 @@
         const messageDiv = document.createElement("div");
         messageDiv.className = "message agent";
         messageDiv.innerHTML = `
-        <span class="sender"><strong>agent:</strong> ${content}</span><br>
-        <small style="font-size: 10px; color: gray;">${timeStr}</small>
-        `;
+        <div class="message-content-wrapper">
+          <div class="message-header">
+            <span class="sender-name">Você</span>
+          </div>
+          <div class="message-text">${content}</div>
+          <div class="message-footer">
+            <span class="message-timestamp">${timeStr}</span>
+          </div>
+        </div>
+        `
         chat.appendChild(messageDiv);
         
         chat.scrollTop = chat.scrollHeight;
