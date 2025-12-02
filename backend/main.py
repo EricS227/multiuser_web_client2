@@ -17,6 +17,7 @@ from datetime import timezone
 from sqlalchemy import text, inspect
 from backend.enhanced_chatbot_service import EnhancedClaudeChatbotService
 from backend.models import User, Conversation, Message, AuditLog, BotInteraction, BotContext, Usuario, brazilian_now
+from backend.n8n_service import n8n_service
 
 import httpx
 import os
@@ -48,7 +49,7 @@ app.add_middleware(
 
 # Banco de dados - Railway compatible
 print("Setting up database connection...")
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chatwoot_clone.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./chatapp.db")
 print(f"Database URL: {DATABASE_URL}")
 
 try:
@@ -166,10 +167,12 @@ try:
     from backend.config import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM
     print("Twilio config loaded successfully")
 except Exception as e:
-    print(f"Error loading Twilio config: {e}")
-    TWILIO_ACCOUNT_SID = None
-    TWILIO_AUTH_TOKEN = None
-    TWILIO_WHATSAPP_FROM = None
+    print(f"Error loading Twilio config from config.py: {e}")
+    print("Loading Twilio config directly from environment variables...")
+    # Fallback to direct environment loading
+    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+    TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+    TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM", "whatsapp:+14155238886")
 
 # Initialize Twilio client if credentials are provided
 twilio_client = None
@@ -457,7 +460,7 @@ async def health_check():
             "status": "healthy", 
             "timestamp": datetime.now().isoformat(),
             "database": "connected",
-            "service": "chatwoot-clone"
+            "service": "chatapp"
         }
     except Exception as e:
         return {
@@ -467,6 +470,45 @@ async def health_check():
             "error": str(e)
         }
 
+@app.post("/init-db")
+async def init_database(db: Session = Depends(get_db)):
+    """Initialize database with default admin user"""
+    try:
+        # Check if admin exists
+        existing = db.exec(select(User).where(User.email == "admin@test.com")).first()
+
+        if existing:
+            return {
+                "status": "exists",
+                "message": "Admin user already exists",
+                "email": "admin@test.com"
+            }
+
+        # Create default admin user
+        admin = User(
+            name="Admin",
+            email="admin@test.com",
+            password_hash=hash_password("admin123"),
+            role="admin"
+        )
+        db.add(admin)
+        db.commit()
+        db.refresh(admin)
+
+        return {
+            "status": "created",
+            "message": "Admin user created successfully!",
+            "email": "admin@test.com",
+            "password": "admin123",
+            "note": "Please change password after first login"
+        }
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
 @app.post("/cadastrar")
 async def cadastrar(
     nome: str = Form(...),
@@ -474,34 +516,43 @@ async def cadastrar(
     senha: str = Form(...),
     db: Session = Depends(get_db)
 ):
+    print(f"=== CADASTRO REQUEST ===")
+    print(f"Nome: {nome}, Email: {email}")
     try:
         # Verificar se usuário já existe
         existing_user = db.exec(select(User).where(User.email == email)).first()
         if existing_user:
+            print(f"User already exists: {email}")
             raise HTTPException(status_code=400, detail="Usuário já existe com este email")
-        
+
         # Criar novo usuário na tabela User (não Usuario)
+        print("Creating new user...")
         novo_usuario = User(
             name=nome,
             email=email,
             password_hash=hash_password(senha),  # Hash da senha
             role="user"  # Role padrão
         )
-        
+
         db.add(novo_usuario)
         db.commit()
         db.refresh(novo_usuario)
-        
+        print(f"User created successfully: ID {novo_usuario.id}")
+
         return {
             "message": f"Usuário {novo_usuario.name} cadastrado com sucesso!",
             "status": "success",
             "user_id": novo_usuario.id,
             "redirect": True
         }
-        
-    except HTTPException:
+
+    except HTTPException as he:
+        print(f"HTTPException: {he.detail}")
         raise
     except Exception as e:
+        print(f"Exception during cadastro: {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
 
@@ -519,8 +570,20 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
 @app.get("/conversations")
 def get_conversations(session: Session = Depends(get_session), user: User = Depends(get_current_user)):
     if user.role == "admin":
-        return session.exec(select(Conversation)).all()
-    return session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
+        conversations = session.exec(select(Conversation)).all()
+    else:
+        conversations = session.exec(select(Conversation).where(Conversation.assigned_to == user.id)).all()
+    
+    # Debug logging
+    print(f"=== API CONVERSATIONS DEBUG ===")
+    print(f"User role: {user.role}, User email: {user.email}")
+    print(f"Returning {len(conversations)} conversations:")
+    for conv in conversations:
+        name_debug = f"'{conv.name}' (None: {conv.name is None}, Empty: {conv.name == ''}, Type: {type(conv.name)})"
+        print(f"  Conv {conv.id}: number='{conv.customer_number}', name={name_debug}, status='{conv.status}'")
+    print(f"=== END API CONVERSATIONS DEBUG ===")
+    
+    return conversations
 
 
 
@@ -729,9 +792,25 @@ async def whatsapp_webhook(request: Request):
         form_data = await request.form()
         from_number = form_data.get("From", "").replace("whatsapp:", "")
         message_body = form_data.get("Body", "")
-        profile_name = form_data.get("ProfileName", "Cliente")
+        raw_profile_name = form_data.get("ProfileName")
+        
+        # Generate a better customer name
+        if raw_profile_name and raw_profile_name.lower() not in ["none", "null", ""]:
+            profile_name = raw_profile_name
+        else:
+            # Generate fallback name from phone number
+            if from_number:
+                # Extract last 4 digits for a friendly name
+                last_digits = from_number[-4:] if len(from_number) >= 4 else from_number
+                profile_name = f"Cliente {last_digits}"
+            else:
+                profile_name = "Cliente Desconhecido"
 
-        print(f"MESSAGE received from {from_number}: {message_body}")
+        print(f"WEBHOOK DEBUG - Received:")
+        print(f"  From: {from_number}")
+        print(f"  Raw ProfileName: '{raw_profile_name}'")
+        print(f"  Final ProfileName: '{profile_name}'")
+        print(f"  Message: {message_body}")
 
         if not from_number or not message_body:
             return {"status": "error", "message": "Missing data"}
@@ -765,35 +844,64 @@ async def whatsapp_webhook(request: Request):
                 chatbot_service = EnhancedClaudeChatbotService(session)
                 escalation_message = chatbot_service.get_escalation_message(escalation_reason, profile_name)
             
-            # Create or find existing conversation
+            # Create or find existing conversation with full history preservation
             with Session(engine) as session:
-                # Check if conversation already exists
-                conversation = session.exec(
+                # Check if conversation already exists (including any bot-only conversations)
+                existing_conversation = session.exec(
                     select(Conversation).where(
                         Conversation.customer_number == from_number,
                         Conversation.status.in_(["pending", "active"])
                     )
                 ).first()
 
-                if not conversation:
-                    # Create new conversation
+                if existing_conversation:
+                    # Use existing conversation and escalate it
+                    conversation = existing_conversation
+                    agent = get_least_busy_agent(session)
+                    
+                    # Update conversation for escalation
+                    conversation.status = "active"  # Escalate to active status
+                    if agent and not conversation.assigned_to:
+                        conversation.assigned_to = agent.id
+                        print(f"Escalating existing conversation {conversation.id} to agent {agent.name}")
+                    else:
+                        print(f"Escalating existing conversation {conversation.id} (already assigned)")
+                        
+                    session.add(conversation)
+                    session.commit()
+                else:
+                    # Create new conversation for escalation
                     agent = get_least_busy_agent(session)
                     system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                    if not system_user:
+                        system_user = User(
+                            email="system@internal",
+                            name="System Bot",
+                            password_hash=hash_password("system_internal_password"),
+                            role="system"
+                        )
+                        session.add(system_user)
+                        session.commit()
+                        session.refresh(system_user)
                     
                     conversation = Conversation(
                         customer_number=from_number,
                         name=profile_name,
                         assigned_to=agent.id if agent else None,
                         created_by=agent.id if agent else system_user.id,
-                        status="active",  # Change from pending to active when escalated
+                        status="active",  # Start as active since it's escalated
                     )
                     session.add(conversation)
                     session.commit()
                     session.refresh(conversation)
                     
-                    print(f"Created conversation {conversation.id}, assigned to agent {agent.name if agent else 'None'}")
+                    print(f"=== ESCALATION CONVERSATION DEBUG ===")
+                    print(f"Created NEW escalated conversation {conversation.id}, assigned to agent {agent.name if agent else 'None'}")
+                    print(f"Escalation input: number='{from_number}', name='{profile_name}'")
+                    print(f"Stored in DB: id={conversation.id}, customer_number='{conversation.customer_number}', name='{conversation.name}'")
+                    print(f"=== END ESCALATION CONVERSATION DEBUG ===")
 
-                # Save customer message with proper message type
+                # Save current customer message (the escalation request)
                 customer_msg = Message(
                     conversation_id=conversation.id,
                     sender="customer",
@@ -830,9 +938,14 @@ async def whatsapp_webhook(request: Request):
                     except Exception as e:
                         print(f"Error broadcasting bot message: {e}")
 
-                # Notify agents via WebSocket
+                # Notify agents via WebSocket with enhanced info
                 try:
-                    asyncio.create_task(manager.broadcast({
+                    # Count previous messages in this conversation for context
+                    message_count = session.exec(
+                        select(Message).where(Message.conversation_id == conversation.id)
+                    ).count()
+                    
+                    escalation_data = {
                         "type": "new_escalation",
                         "id": customer_msg.id,
                         "conversation_id": conversation.id,
@@ -843,8 +956,15 @@ async def whatsapp_webhook(request: Request):
                         "customer_number": from_number,
                         "timestamp": customer_msg.timestamp.isoformat(),
                         "escalation_reason": escalation_reason,
-                        "bot_service": bot_service
-                    }))
+                        "bot_service": bot_service,
+                        "message_history_count": message_count,
+                        "conversation_status": conversation.status,
+                        "assigned_agent": conversation.assigned_to
+                    }
+                    
+                    asyncio.create_task(manager.broadcast(escalation_data))
+                    print(f"Broadcasted escalation notification with {message_count} previous messages")
+                    
                 except Exception as e:
                     print(f"Error notifying agents: {e}")
             
@@ -861,35 +981,99 @@ async def whatsapp_webhook(request: Request):
             with Session(engine) as session:
                 existing_conversation = session.exec(
                     select(Conversation).where(Conversation.customer_number == from_number)
-                    .where(Conversation.status == "pending")
+                    .where(Conversation.status.in_(["pending", "active"]))
                 ).first()
                 
-                if existing_conversation:
-                    # Save bot response to existing conversation
-                    bot_msg = Message(
-                        conversation_id=existing_conversation.id,
-                        sender="bot",
-                        message_type="bot", 
-                        content=bot_response,
-                        bot_service=bot_service
-                    )
-                    session.add(bot_msg)
-                    session.commit()
+                # Create conversation if none exists (for bot-only interactions)
+                if not existing_conversation:
+                    system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                    if not system_user:
+                        # Create system user if it doesn't exist
+                        system_user = User(
+                            email="system@internal",
+                            name="System Bot",
+                            password_hash=hash_password("system_internal_password"),
+                            role="system"
+                        )
+                        session.add(system_user)
+                        session.commit()
+                        session.refresh(system_user)
                     
-                    # Broadcast bot message to WebSocket clients
-                    try:
-                        asyncio.create_task(manager.broadcast({
-                            "id": bot_msg.id,
-                            "conversation_id": existing_conversation.id,
-                            "sender": "bot",
-                            "message_type": "bot",
-                            "message": bot_response,
-                            "content": bot_response,
-                            "bot_service": bot_service,
-                            "timestamp": bot_msg.timestamp.isoformat()
-                        }))
-                    except Exception as e:
-                        print(f"Error broadcasting bot message: {e}")
+                    # Create new conversation for bot interaction
+                    existing_conversation = Conversation(
+                        customer_number=from_number,
+                        name=profile_name,
+                        created_by=system_user.id,
+                        status="pending"  # Keep as pending so agents can see it
+                    )
+                    session.add(existing_conversation)
+                    session.commit()
+                    session.refresh(existing_conversation)
+                    
+                    print(f"=== CONVERSATION CREATION DEBUG ===")
+                    print(f"Created new conversation {existing_conversation.id} for bot interaction")
+                    print(f"Input values: number='{from_number}', name='{profile_name}'")
+                    print(f"Stored in DB: id={existing_conversation.id}, customer_number='{existing_conversation.customer_number}', name='{existing_conversation.name}'")
+                    print(f"Name is None: {existing_conversation.name is None}")
+                    print(f"Name is empty: {existing_conversation.name == ''}")
+                    print(f"=== END CONVERSATION DEBUG ===")
+                else:
+                    print(f"=== USING EXISTING CONVERSATION ===")
+                    print(f"Found existing conversation {existing_conversation.id}")
+                    print(f"Existing name: '{existing_conversation.name}', number: '{existing_conversation.customer_number}'")
+                    print(f"=== END EXISTING CONVERSATION DEBUG ===")
+                
+                # Save customer message first
+                customer_msg = Message(
+                    conversation_id=existing_conversation.id,
+                    sender="customer",
+                    message_type="customer",
+                    content=message_body
+                )
+                session.add(customer_msg)
+                session.commit()
+                
+                # Save bot response to conversation
+                bot_msg = Message(
+                    conversation_id=existing_conversation.id,
+                    sender="bot",
+                    message_type="bot", 
+                    content=bot_response,
+                    bot_service=bot_service
+                )
+                session.add(bot_msg)
+                session.commit()
+                
+                # Broadcast customer message to WebSocket clients
+                try:
+                    asyncio.create_task(manager.broadcast({
+                        "id": customer_msg.id,
+                        "conversation_id": existing_conversation.id,
+                        "sender": "customer",
+                        "message_type": "customer",
+                        "message": message_body,
+                        "content": message_body,
+                        "customer_name": profile_name,
+                        "customer_number": from_number,
+                        "timestamp": customer_msg.timestamp.isoformat()
+                    }))
+                except Exception as e:
+                    print(f"Error broadcasting customer message: {e}")
+                
+                # Broadcast bot message to WebSocket clients
+                try:
+                    asyncio.create_task(manager.broadcast({
+                        "id": bot_msg.id,
+                        "conversation_id": existing_conversation.id,
+                        "sender": "bot",
+                        "message_type": "bot",
+                        "message": bot_response,
+                        "content": bot_response,
+                        "bot_service": bot_service,
+                        "timestamp": bot_msg.timestamp.isoformat()
+                    }))
+                except Exception as e:
+                    print(f"Error broadcasting bot message: {e}")
             
             # Send bot response
             try:
@@ -902,6 +1086,339 @@ async def whatsapp_webhook(request: Request):
     except Exception as e:
         print(f"ERROR in webhook: {e}")
         return {"status": "error", "message": str(e)}
+
+# n8n Authentication Helper
+def verify_n8n_webhook(request: Request) -> bool:
+    """Verify n8n webhook authenticity"""
+    # Check for n8n API key header
+    n8n_api_key = request.headers.get("x-n8n-api-key") or request.headers.get("authorization")
+    expected_key = os.getenv("N8N_API_KEY")
+    
+    if expected_key and n8n_api_key:
+        # Remove 'Bearer ' prefix if present
+        if n8n_api_key.startswith("Bearer "):
+            n8n_api_key = n8n_api_key[7:]
+        return n8n_api_key == expected_key
+    
+    # If no key configured, allow (for development)
+    if not expected_key:
+        print("N8N WARNING: No API key configured, allowing all requests")
+        return True
+        
+    print("N8N ERROR: Missing or invalid API key")
+    return False
+
+# n8n Webhook Integration
+@app.post("/webhook/n8n")
+async def n8n_webhook(request: Request):
+    """n8n webhook handler with enhanced message processing and security"""
+    try:
+        # Verify n8n authentication
+        if not verify_n8n_webhook(request):
+            print("N8N: Unauthorized webhook request")
+            return {"status": "error", "message": "Unauthorized", "code": 401, "n8n_format": True}
+        
+        # Parse JSON payload from n8n
+        data = await request.json()
+        
+        # Extract message data (n8n format)
+        from_number = data.get("from", "").replace("whatsapp:", "")
+        message_body = data.get("message", "")
+        profile_name = data.get("profile_name", "Cliente")
+        n8n_workflow_id = data.get("workflow_id", "unknown")
+        n8n_execution_id = data.get("execution_id", "unknown")
+        
+        # Enhanced customer name processing
+        if not profile_name or profile_name.lower() in ["none", "null", "", "cliente"]:
+            if from_number:
+                last_digits = from_number[-4:] if len(from_number) >= 4 else from_number
+                profile_name = f"Cliente {last_digits}"
+            else:
+                profile_name = "Cliente n8n"
+        
+        print(f"N8N WEBHOOK DEBUG - Received:")
+        print(f"  From: {from_number}")
+        print(f"  ProfileName: '{profile_name}'")
+        print(f"  Message: {message_body}")
+        print(f"  Workflow ID: {n8n_workflow_id}")
+        print(f"  Execution ID: {n8n_execution_id}")
+        
+        if not from_number or not message_body:
+            return {"status": "error", "message": "Missing required data", "n8n_format": True}
+        
+        # Process through existing chatbot logic
+        with Session(engine) as session:
+            chatbot_service = EnhancedClaudeChatbotService(session)
+            result = await chatbot_service.process_message(from_number, message_body, profile_name)
+            
+            should_escalate = result['should_escalate']
+            bot_response = result.get('bot_response')
+            bot_service = result.get('bot_service', 'n8n_enhanced')
+            escalation_reason = result.get('escalation_reason')
+            
+            # Save bot interaction with n8n metadata
+            if bot_response:
+                await _save_bot_interaction(
+                    session, from_number, message_body, bot_response, 
+                    profile_name, f"{bot_service}_n8n", should_escalate, escalation_reason
+                )
+                print(f"N8N BOT ({bot_service}) responding: {bot_response}")
+        
+        # Handle escalation with n8n-specific formatting
+        if should_escalate:
+            print(f"N8N ESCALATING conversation for {from_number} to human agent (reason: {escalation_reason})")
+            
+            with Session(engine) as session:
+                chatbot_service = EnhancedClaudeChatbotService(session)
+                escalation_message = chatbot_service.get_escalation_message(escalation_reason, profile_name)
+                
+                # Create or find conversation (same logic as Twilio)
+                existing_conversation = session.exec(
+                    select(Conversation).where(
+                        Conversation.customer_number == from_number,
+                        Conversation.status.in_(["pending", "active"])
+                    )
+                ).first()
+
+                if existing_conversation:
+                    conversation = existing_conversation
+                    agent = get_least_busy_agent(session)
+                    conversation.status = "active"
+                    if agent and not conversation.assigned_to:
+                        conversation.assigned_to = agent.id
+                        print(f"N8N: Escalating existing conversation {conversation.id} to agent {agent.name}")
+                    session.add(conversation)
+                    session.commit()
+                else:
+                    agent = get_least_busy_agent(session)
+                    system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                    if not system_user:
+                        system_user = User(
+                            email="system@internal",
+                            name="System Bot",
+                            password_hash=hash_password("system_internal_password"),
+                            role="system"
+                        )
+                        session.add(system_user)
+                        session.commit()
+                        session.refresh(system_user)
+                    
+                    conversation = Conversation(
+                        customer_number=from_number,
+                        name=profile_name,
+                        assigned_to=agent.id if agent else None,
+                        created_by=agent.id if agent else system_user.id,
+                        status="active"
+                    )
+                    session.add(conversation)
+                    session.commit()
+                    session.refresh(conversation)
+                    
+                    print(f"N8N: Created escalated conversation {conversation.id}, assigned to agent {agent.name if agent else 'None'}")
+
+                # Save customer message
+                customer_msg = Message(
+                    conversation_id=conversation.id,
+                    sender="customer",
+                    message_type="customer",
+                    content=message_body
+                )
+                session.add(customer_msg)
+                session.commit()
+
+                # Save escalation message
+                if escalation_message:
+                    bot_msg = Message(
+                        conversation_id=conversation.id,
+                        sender="bot",
+                        message_type="bot",
+                        content=escalation_message,
+                        bot_service="n8n_escalation"
+                    )
+                    session.add(bot_msg)
+                    session.commit()
+
+                    # Broadcast to WebSocket clients
+                    try:
+                        asyncio.create_task(manager.broadcast({
+                            "id": bot_msg.id,
+                            "conversation_id": conversation.id,
+                            "sender": "bot",
+                            "message_type": "bot",
+                            "message": escalation_message,
+                            "content": escalation_message,
+                            "bot_service": "n8n_escalation",
+                            "timestamp": bot_msg.timestamp.isoformat()
+                        }))
+                    except Exception as e:
+                        print(f"N8N: Error broadcasting bot message: {e}")
+
+                # Notify agents with n8n metadata
+                try:
+                    message_count = session.exec(
+                        select(Message).where(Message.conversation_id == conversation.id)
+                    ).count()
+                    
+                    escalation_data = {
+                        "type": "new_escalation",
+                        "source": "n8n",
+                        "n8n_workflow_id": n8n_workflow_id,
+                        "n8n_execution_id": n8n_execution_id,
+                        "id": customer_msg.id,
+                        "conversation_id": conversation.id,
+                        "sender": "customer",
+                        "message_type": "customer", 
+                        "message": message_body,
+                        "customer_name": profile_name,
+                        "customer_number": from_number,
+                        "timestamp": customer_msg.timestamp.isoformat(),
+                        "escalation_reason": escalation_reason,
+                        "bot_service": bot_service,
+                        "message_history_count": message_count,
+                        "conversation_status": conversation.status,
+                        "assigned_agent": conversation.assigned_to
+                    }
+                    
+                    asyncio.create_task(manager.broadcast(escalation_data))
+                    print(f"N8N: Broadcasted escalation notification")
+                    
+                except Exception as e:
+                    print(f"N8N: Error notifying agents: {e}")
+            
+            # Return n8n-formatted escalation response
+            return {
+                "status": "escalated_to_agent",
+                "response": escalation_message,
+                "escalation_reason": escalation_reason,
+                "conversation_id": conversation.id,
+                "assigned_agent_id": conversation.assigned_to,
+                "message_history_count": message_count,
+                "n8n_format": True,
+                "actions": {
+                    "send_whatsapp": {
+                        "to": from_number,
+                        "message": escalation_message
+                    },
+                    "notify_agents": True,
+                    "create_conversation": True
+                }
+            }
+        
+        else:
+            # Handle bot-only response with n8n enhancements
+            with Session(engine) as session:
+                existing_conversation = session.exec(
+                    select(Conversation).where(Conversation.customer_number == from_number)
+                    .where(Conversation.status.in_(["pending", "active"]))
+                ).first()
+                
+                # Create conversation for bot interactions (same as Twilio)
+                if not existing_conversation:
+                    system_user = session.exec(select(User).where(User.email == "system@internal")).first()
+                    if not system_user:
+                        system_user = User(
+                            email="system@internal",
+                            name="System Bot",
+                            password_hash=hash_password("system_internal_password"),
+                            role="system"
+                        )
+                        session.add(system_user)
+                        session.commit()
+                        session.refresh(system_user)
+                    
+                    existing_conversation = Conversation(
+                        customer_number=from_number,
+                        name=profile_name,
+                        created_by=system_user.id,
+                        status="pending"
+                    )
+                    session.add(existing_conversation)
+                    session.commit()
+                    session.refresh(existing_conversation)
+                    
+                    print(f"N8N: Created conversation {existing_conversation.id} for bot interaction")
+                
+                # Save customer message
+                customer_msg = Message(
+                    conversation_id=existing_conversation.id,
+                    sender="customer",
+                    message_type="customer",
+                    content=message_body
+                )
+                session.add(customer_msg)
+                session.commit()
+                
+                # Save bot response
+                bot_msg = Message(
+                    conversation_id=existing_conversation.id,
+                    sender="bot",
+                    message_type="bot",
+                    content=bot_response,
+                    bot_service=f"{bot_service}_n8n"
+                )
+                session.add(bot_msg)
+                session.commit()
+                
+                # Broadcast to WebSocket clients
+                try:
+                    asyncio.create_task(manager.broadcast({
+                        "id": customer_msg.id,
+                        "conversation_id": existing_conversation.id,
+                        "sender": "customer",
+                        "message_type": "customer",
+                        "message": message_body,
+                        "content": message_body,
+                        "customer_name": profile_name,
+                        "customer_number": from_number,
+                        "timestamp": customer_msg.timestamp.isoformat()
+                    }))
+                    
+                    asyncio.create_task(manager.broadcast({
+                        "id": bot_msg.id,
+                        "conversation_id": existing_conversation.id,
+                        "sender": "bot",
+                        "message_type": "bot",
+                        "message": bot_response,
+                        "content": bot_response,
+                        "bot_service": f"{bot_service}_n8n",
+                        "timestamp": bot_msg.timestamp.isoformat()
+                    }))
+                except Exception as e:
+                    print(f"N8N: Error broadcasting messages: {e}")
+            
+            # Return n8n-formatted bot response
+            return {
+                "status": "bot_response",
+                "response": bot_response,
+                "bot_service": f"{bot_service}_n8n",
+                "conversation_id": existing_conversation.id,
+                "n8n_format": True,
+                "actions": {
+                    "send_whatsapp": {
+                        "to": from_number,
+                        "message": bot_response
+                    },
+                    "save_conversation": True,
+                    "continue_chat": True
+                },
+                "metadata": {
+                    "workflow_id": n8n_workflow_id,
+                    "execution_id": n8n_execution_id,
+                    "profile_name": profile_name
+                }
+            }
+
+    except Exception as e:
+        print(f"N8N WEBHOOK ERROR: {e}")
+        return {
+            "status": "error", 
+            "message": str(e),
+            "n8n_format": True,
+            "actions": {
+                "retry": True,
+                "fallback_to_twilio": True
+            }
+        }
 
 # Test endpoint for bot without WhatsApp
 @app.post("/test-bot")
@@ -1077,6 +1594,116 @@ def assign_conversation(conversation_id: int, user: User = Depends(get_current_u
     return {"msg": "Conversa atribuida ao operador"}
 
 # Enhanced chatbot management endpoints
+# n8n Integration Status and Helper Functions
+def send_to_n8n(data: dict) -> bool:
+    """Send data back to n8n workflow if configured"""
+    n8n_url = os.getenv("N8N_WEBHOOK_URL")
+    n8n_api_key = os.getenv("N8N_API_KEY")
+    n8n_enabled = os.getenv("N8N_ENABLED", "false").lower() == "true"
+    
+    if not n8n_enabled or not n8n_url:
+        return False
+    
+    try:
+        headers = {"Content-Type": "application/json"}
+        if n8n_api_key:
+            headers["x-n8n-api-key"] = n8n_api_key
+            
+        response = requests.post(n8n_url, json=data, headers=headers, timeout=10)
+        if response.status_code == 200:
+            print(f"N8N: Successfully sent data to workflow")
+            return True
+        else:
+            print(f"N8N: Failed to send data, status: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"N8N: Error sending data to workflow: {e}")
+        return False
+
+@app.get("/n8n/status")
+def get_n8n_status(user: User = Depends(get_current_user)):
+    """Get n8n integration status"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem acessar")
+    
+    n8n_enabled = os.getenv("N8N_ENABLED", "false").lower() == "true"
+    n8n_url = os.getenv("N8N_WEBHOOK_URL")
+    n8n_api_key = os.getenv("N8N_API_KEY")
+    
+    # Test n8n connectivity if enabled
+    n8n_connectivity = "disabled"
+    if n8n_enabled and n8n_url:
+        try:
+            headers = {"Content-Type": "application/json"}
+            if n8n_api_key:
+                headers["x-n8n-api-key"] = n8n_api_key
+                
+            # Send a test ping
+            response = requests.get(n8n_url.replace("/webhook", "/health"), headers=headers, timeout=5)
+            if response.status_code == 200:
+                n8n_connectivity = "online"
+            else:
+                n8n_connectivity = f"error_{response.status_code}"
+        except Exception:
+            n8n_connectivity = "offline"
+    
+    return {
+        "n8n_integration": {
+            "enabled": n8n_enabled,
+            "webhook_url": n8n_url[:50] + "..." if n8n_url and len(n8n_url) > 50 else n8n_url,
+            "api_key_configured": bool(n8n_api_key),
+            "connectivity": n8n_connectivity,
+            "webhook_endpoint": "/webhook/n8n"
+        },
+        "features": {
+            "enhanced_routing": n8n_enabled,
+            "workflow_automation": n8n_enabled,
+            "parallel_processing": True,  # Both Twilio and n8n can work together
+            "fallback_to_twilio": True
+        }
+    }
+
+@app.post("/test-n8n")
+async def test_n8n_webhook(request: Request, user: User = Depends(get_current_user)):
+    """Test n8n webhook with sample data"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem acessar")
+    
+    try:
+        # Get test data from request or use defaults
+        data = await request.json() if request.headers.get("content-type") == "application/json" else {}
+        
+        test_data = {
+            "from": data.get("from", "+554196950370"),
+            "message": data.get("message", "n8n test message"),
+            "profile_name": data.get("profile_name", "n8n Test User"),
+            "workflow_id": "test_workflow",
+            "execution_id": "test_execution_123"
+        }
+        
+        print(f"ADMIN TEST: Testing n8n webhook with data: {test_data}")
+        
+        # Call our own n8n webhook endpoint
+        from fastapi.testclient import TestClient
+        with TestClient(app) as client:
+            # Add auth header for testing
+            headers = {"Content-Type": "application/json"}
+            n8n_api_key = os.getenv("N8N_API_KEY")
+            if n8n_api_key:
+                headers["x-n8n-api-key"] = n8n_api_key
+            
+            response = client.post("/webhook/n8n", json=test_data, headers=headers)
+            
+            return {
+                "test_status": "completed",
+                "webhook_response": response.json(),
+                "status_code": response.status_code,
+                "test_data": test_data
+            }
+            
+    except Exception as e:
+        return {"test_status": "error", "message": str(e)}
+
 @app.get("/chatbot/status")
 def get_chatbot_status(user: User = Depends(get_current_user)):
     """Get current chatbot service status and statistics"""
@@ -1232,11 +1859,24 @@ def get_chatbot_analytics(user: User = Depends(get_current_user), session: Sessi
 
 @app.post("/fake-conversation")
 def create_fake(session: Session = Depends(get_session)):
-    new = Conversation(customer_number="+55119999999", status="pending")
+    test_name = "Test Customer Name"
+    new = Conversation(
+        customer_number="+554196950370", 
+        name=test_name,
+        status="pending",
+        created_by=1  # Assume admin user exists
+    )
     session.add(new)
     session.commit()
     session.refresh(new)
-    return {"id": new.id}
+    
+    print(f"=== FAKE CONVERSATION TEST ===")
+    print(f"Created test conversation: id={new.id}")
+    print(f"Input name: '{test_name}'")
+    print(f"Stored name: '{new.name}' (None: {new.name is None})")
+    print(f"=== END FAKE CONVERSATION TEST ===")
+    
+    return {"id": new.id, "name": new.name, "customer_number": new.customer_number}
 
 
 @app.post("/conversations")
@@ -1335,6 +1975,156 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
 # Serve arquivos estáticos HTML/JS
 # Get the parent directory to access static files
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# n8n API Endpoints using new service
+@app.post("/api/n8n/trigger")
+async def trigger_n8n_workflow(request: Request, user: User = Depends(get_current_user)):
+    """Trigger n8n workflow with custom data"""
+    if user.role not in ["admin", "agent"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+    
+    try:
+        data = await request.json()
+        workflow_id = data.get("workflow_id", "chat")
+        message_data = data.get("data", {})
+        
+        result = await n8n_service.send_to_workflow(workflow_id, message_data)
+        return {"status": "success", "result": result}
+        
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/n8n/health")
+async def get_n8n_health(user: User = Depends(get_current_user)):
+    """Check n8n service health status"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins podem acessar")
+    
+    health_status = await n8n_service.health_check()
+    return health_status
+
+@app.post("/api/n8n/chat")
+async def send_to_n8n_chat(request: Request, user: User = Depends(get_current_user)):
+    """Send message to n8n chat workflow"""
+    try:
+        data = await request.json()
+        message = data.get("message", "")
+        phone_number = data.get("phone_number", "")
+        customer_name = data.get("customer_name")
+        conversation_id = data.get("conversation_id")
+        
+        if not message or not phone_number:
+            return {"status": "error", "message": "Message and phone_number required"}
+        
+        result = await n8n_service.trigger_chat_workflow(
+            message, phone_number, customer_name, conversation_id
+        )
+        return {"status": "success", "result": result}
+
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/dashboard/statistics")
+async def get_dashboard_statistics(current_user: User = Depends(get_current_user)):
+    """Get comprehensive statistics for dashboard"""
+    try:
+        from datetime import datetime, timedelta
+        from sqlalchemy import func, desc
+
+        with Session(engine) as db_session:
+            # Total conversations
+            total_conversations = len(db_session.exec(select(Conversation)).all())
+
+            # Active conversations (open status)
+            active_conversations = len(db_session.exec(
+                select(Conversation).where(Conversation.status == "open")
+            ).all())
+
+            # Total messages
+            total_messages = len(db_session.exec(select(Message)).all())
+
+            # Messages by type
+            messages = db_session.exec(select(Message)).all()
+            customer_msgs = len([m for m in messages if m.message_type == "customer"])
+            agent_msgs = len([m for m in messages if m.message_type == "agent"])
+            bot_msgs = len([m for m in messages if m.message_type == "bot"])
+
+            # Bot service breakdown
+            bot_messages = [m for m in messages if m.message_type == "bot"]
+            claude_count = len([m for m in bot_messages if m.bot_service == "Claude"])
+            ollama_count = len([m for m in bot_messages if m.bot_service == "Ollama"])
+            fallback_count = len([m for m in bot_messages if m.bot_service == "Fallback"])
+
+            # Conversations over last 7 days
+            now = datetime.now()
+            last_7_days = []
+            for i in range(6, -1, -1):
+                day = now - timedelta(days=i)
+                day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+                day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+                day_convs = len([c for c in db_session.exec(select(Conversation)).all()
+                               if c.created_at and day_start <= c.created_at <= day_end])
+
+                last_7_days.append({
+                    "date": day.strftime("%Y-%m-%d"),
+                    "count": day_convs
+                })
+
+            # Recent conversations (last 10)
+            recent_conversations = db_session.exec(
+                select(Conversation).order_by(Conversation.created_at.desc()).limit(10)
+            ).all()
+
+            recent_conv_data = []
+            for conv in recent_conversations:
+                last_msg = db_session.exec(
+                    select(Message)
+                    .where(Message.conversation_id == conv.id)
+                    .order_by(Message.timestamp.desc())
+                    .limit(1)
+                ).first()
+
+                recent_conv_data.append({
+                    "id": conv.id,
+                    "customer_number": conv.customer_number,
+                    "name": conv.name,
+                    "status": conv.status,
+                    "created_at": conv.created_at.isoformat() if conv.created_at else None,
+                    "last_message": last_msg.content[:50] + "..." if last_msg and last_msg.content else None,
+                    "last_message_time": last_msg.timestamp.isoformat() if last_msg else None
+                })
+
+            # Bot response rate (percentage of conversations with bot messages)
+            convs_with_bot = len(set([m.conversation_id for m in bot_messages]))
+            bot_response_rate = (convs_with_bot / total_conversations * 100) if total_conversations > 0 else 0
+
+            return {
+                "overview": {
+                    "total_conversations": total_conversations,
+                    "active_conversations": active_conversations,
+                    "total_messages": total_messages,
+                    "bot_response_rate": round(bot_response_rate, 1)
+                },
+                "messages_by_type": {
+                    "customer": customer_msgs,
+                    "agent": agent_msgs,
+                    "bot": bot_msgs
+                },
+                "bot_services": {
+                    "claude": claude_count,
+                    "ollama": ollama_count,
+                    "fallback": fallback_count
+                },
+                "conversations_last_7_days": last_7_days,
+                "recent_conversations": recent_conv_data
+            }
+
+    except Exception as e:
+        print(f"Dashboard statistics error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 # Only mount static files if directory exists
@@ -1346,6 +2136,7 @@ else:
 
 print("FastAPI application startup completed successfully!")
 print("All routes and endpoints are now available.")
+print(f"n8n integration: {'enabled' if n8n_service.enabled else 'disabled'}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
