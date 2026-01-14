@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: fastapi-whatsapp-chatbot
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: chmod +x start.sh && ./start.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: PORT
+        value: 10000
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: chatapp-db
+          property: connectionString
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        value: whatsapp:+14155238886
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: N8N_ENABLED
+        value: false
+
+databases:
+  - name: chatapp-db
+    region: oregon
+    plan: free
