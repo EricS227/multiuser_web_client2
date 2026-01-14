@@ -32,7 +32,10 @@ class Message(SQLModel, table=True):
     sender: str  # "customer", "agent", "bot", "system"
     message_type: str = "customer"  # "customer", "agent", "bot", "system"
     content: str
-    bot_service: Optional[str] = None  # "claude", "ollama", "rasa", "fallback"
+    bot_service: Optional[str] = None  # "claude", "ollama", "rasa", "fallback", "n8n"
+    n8n_workflow_id: Optional[str] = None  # n8n workflow identifier
+    n8n_execution_id: Optional[str] = None  # n8n execution identifier
+    n8n_processed: bool = False  # whether message was processed by n8n
     timestamp: datetime = Field(default_factory=brazilian_now)
 
 class AuditLog(SQLModel, table=True):
