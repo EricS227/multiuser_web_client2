@@ -478,11 +478,14 @@ Instructions:
             Responda de forma útil e concisa em português. Se não conseguir ajudar completamente, sugira falar com um atendente.
             """
             
+            # Get Ollama model from environment variable
+            ollama_model = os.getenv("OLLAMA_MODEL", "mistral")
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     "http://localhost:11434/api/generate",
                     json={
-                        "model": "mistral",
+                        "model": ollama_model,
                         "prompt": enhanced_prompt,
                         "stream": False,
                         "options": {
@@ -491,7 +494,7 @@ Instructions:
                             "max_tokens": 150
                         }
                     },
-                    timeout=5.0
+                    timeout=30.0
                 )
                 response.raise_for_status()
                 result = response.json().get("response", "").strip()
