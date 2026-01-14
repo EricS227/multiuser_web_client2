@@ -56,8 +56,8 @@ logs/
 # Node modules (if any)
 node_modules/
 
-# Environment files
-.env
+# Environment files (keep .env for local development)
+# .env
 .env.local
 .env.production
 
