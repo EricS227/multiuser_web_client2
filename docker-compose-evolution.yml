@@ -40,9 +40,8 @@ services:
       - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
 
       # WhatsApp Configuration
-      - CONFIG_SESSION_PHONE_CLIENT=Chrome
-      - CONFIG_SESSION_PHONE_NAME=Windows
-      - CONFIG_SESSION_PHONE=true
+      - CONFIG_SESSION_PHONE_CLIENT=Evolution API
+      - CONFIG_SESSION_PHONE_NAME=Chrome
 
       # Anti-detection settings
       - WEBHOOK_BASE64=false
