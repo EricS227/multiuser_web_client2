@@ -39,10 +39,10 @@ services:
       - WEBHOOK_GLOBAL_ENABLED=true
       - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
 
-      # WhatsApp Configuration (Masquerade as real browser)
-      - CONFIG_SESSION_PHONE_CLIENT=Chrome (Windows)
-      - CONFIG_SESSION_PHONE_NAME=Chrome
-      - CONFIG_SESSION_PHONE_VERSION=2.3000.1030831524
+      # WhatsApp Configuration
+      - CONFIG_SESSION_PHONE_CLIENT=Chrome
+      - CONFIG_SESSION_PHONE_NAME=Windows
+      - CONFIG_SESSION_PHONE=true
 
       # Anti-detection settings
       - WEBHOOK_BASE64=false
