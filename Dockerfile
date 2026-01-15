@@ -10,14 +10,26 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy all files
-COPY . .
+# Copy requirements first for caching
+COPY requirements.txt .
 
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy backend and static directories explicitly
+COPY backend/ ./backend/
+COPY static/ ./static/
+# Copy templates if exists (optional)
+COPY template[s]/ ./templates/
+
+# Create __init__.py to make backend a proper Python package
+RUN touch /app/backend/__init__.py
+
 # Create data directory for SQLite database
 RUN mkdir -p /app/data
+
+# Verify files are copied
+RUN ls -la /app && ls -la /app/backend/
 
 # Add current directory to Python path
 ENV PYTHONPATH=/app
