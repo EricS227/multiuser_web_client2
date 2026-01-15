@@ -44,10 +44,11 @@ services:
 
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql
-      DATABASE_URL: postgresql://evolution:evolution@postgres:5432/evolution
+      DATABASE_CONNECTION_URI: postgresql://evolution:evolution@postgres:5432/evolution
 
-      REDIS_HOST: redis-evolution
-      REDIS_PORT: "6379"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis-evolution:6379
+      CACHE_REDIS_PREFIX_KEY: evolution
 
       WEBHOOK_GLOBAL_URL: http://web:8000/webhook/evolution
       WEBHOOK_GLOBAL_ENABLED: "true"
