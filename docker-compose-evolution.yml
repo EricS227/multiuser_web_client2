@@ -14,7 +14,7 @@ services:
       - DATABASE_URL=sqlite:///./data/chatapp.db
       - EVOLUTION_ENABLED=true
       - EVOLUTION_API_URL=http://evolution-api:8080
-      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-B6D711FCDE4D4FD5936544120E713976}
+      - EVOLUTION_API_KEY=B6D711FCDE4D4FD5936544120E713976
       - EVOLUTION_INSTANCE_NAME=${EVOLUTION_INSTANCE_NAME:-default}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - PYTHONUNBUFFERED=1
@@ -40,7 +40,7 @@ services:
 
       # Authentication
       - AUTHENTICATION_TYPE=apikey
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-B6D711FCDE4D4FD5936544120E713976}
+      - AUTHENTICATION_API_KEY=B6D711FCDE4D4FD5936544120E713976
       - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
 
       # Database - PostgreSQL (recommended for production)
@@ -60,7 +60,7 @@ services:
       - CACHE_REDIS_SAVE_INSTANCES=true
 
       # Webhook Configuration
-      - WEBHOOK_GLOBAL_URL=${EVOLUTION_WEBHOOK_URL:-http://host.docker.internal:8000/webhook/evolution}
+      - WEBHOOK_GLOBAL_URL=http://fastapi-chatapp:8000/webhook/evolution
       - WEBHOOK_GLOBAL_ENABLED=true
       - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
 
