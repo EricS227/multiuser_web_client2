@@ -103,17 +103,33 @@
             
             const submitBtn = document.getElementById('submitBtn');
             const mensagemDiv = document.getElementById('mensagem');
-            
-            // Desabilita o botão e mostra loading
+            const form = e.target;
+
             submitBtn.disabled = true;
             submitBtn.textContent = 'Cadastrando...';
             mensagemDiv.innerHTML = '<div class="loading">Processando...</div>';
             
-            const formData = new FormData(e.target);
+            const data = {
+                nome: form.nome.value,
+                email: form.email.value,
+                senha: form.senha.value
+            };
+
+            const res = await fetch('/cadastrar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            // Desabilita o botão e mostra loading
+    
+            
+            const result = await res.json();
             
             try {
                 const res = await fetch('/cadastrar', {  // Nova rota
                     method: 'POST',
+                    headers: {'Content-Type': 'appication/jsonn'},
                     body: formData
                 });
                 

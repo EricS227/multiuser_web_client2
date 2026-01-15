@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a FastAPI-based chat application with WhatsApp integration. It includes user authentication, conversation management, real-time messaging via WebSockets, and Twilio WhatsApp integration.
+This is a FastAPI-based chat application with WhatsApp integration. It includes user authentication, conversation management, real-time messaging via WebSockets, and Evolution API WhatsApp integration.
 
 ## Development Commands
 
@@ -54,13 +54,13 @@ docker-compose down
 - **Enhanced Chatbot Service** (`backend/enhanced_chatbot_service.py`): Multi-tier chatbot with Claude AI, database context, and permanent fallbacks
 - **Models** (`backend/models.py`): SQLModel definitions for User, Conversation, Message, AuditLog, BotInteraction, and BotContext
 - **Static Frontend** (`static/`): HTML/CSS/JS client interface for chat management
-- **Twilio Integration**: WhatsApp messaging through Twilio API
+- **Evolution API Integration**: WhatsApp messaging through Evolution API (free, QR Code based)
 - **Docker Stack**: Web app, Redis, and optional Nginx reverse proxy
 
 ### Key Files
 - `backend/main.py`: Main FastAPI application with all endpoints and WebSocket handling
 - `backend/models.py`: Database models using SQLModel
-- `backend/requirements.txt`: Python dependencies including FastAPI, SQLModel, Twilio, etc.
+- `backend/requirements.txt`: Python dependencies including FastAPI, SQLModel, httpx, etc.
 - `docker-compose.yml`: Multi-service setup with web app, Redis, and Nginx
 - `Dockerfile`: Python 3.9 container with system dependencies for compilation
 - `static/`: Frontend HTML templates and assets
@@ -78,7 +78,7 @@ docker-compose down
 Required environment variables (see `.env` example):
 - `SECRET_KEY`: JWT token signing key
 - `DATABASE_URL`: Database connection string (SQLite by default)
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`: WhatsApp integration
+- `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE_NAME`: Evolution API WhatsApp integration
 - `ANTHROPIC_API_KEY`: Claude API key for enhanced chatbot (optional, fallback available)
 - `N8N_ENABLED`, `N8N_WEBHOOK_URL`, `N8N_API_KEY`: n8n workflow automation integration
 

@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  # Evolution API - WhatsApp Integration
+  evolution-api:
+    image: atendai/evolution-api:latest
+    container_name: evolution-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Server Config
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - SERVER_URL=http://localhost:8080
+
+      # Authentication
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-B6D711FCDE4D4FD5936544120E713976}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+
+      # Database - PostgreSQL (recommended for production)
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://evolution:evolution@postgres-evolution:5432/evolution
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+
+      # Redis Cache (optional but recommended)
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis-evolution:6379
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=true
+
+      # Webhook Configuration
+      - WEBHOOK_GLOBAL_URL=${EVOLUTION_WEBHOOK_URL:-http://host.docker.internal:8000/webhook/evolution}
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+
+      # WhatsApp Configuration (Masquerade as real browser)
+      - CONFIG_SESSION_PHONE_CLIENT=Chrome (Windows)
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+      - CONFIG_SESSION_PHONE_VERSION=2.3000.1030831524
+
+      # Anti-detection settings
+      - WEBHOOK_BASE64=false
+      - DATABASE_SAVE_DATA_HISTORIC=false
+
+      # WebSocket - CRITICAL FOR QR CODE GENERATION!
+      - WEBSOCKET_ENABLED=true
+      - WEBSOCKET_GLOBAL_EVENTS=true
+
+      # Logs
+      - LOG_LEVEL=INFO
+      - LOG_COLOR=true
+      - LOG_BAILEYS=info
+
+      # Encoding - Force UTF-8
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - NODE_OPTIONS=--max-old-space-size=4096
+
+      # QR Code
+      - QRCODE_LIMIT=30
+      - QRCODE_COLOR=#198754
+
+      # Proxy Configuration (protects against WhatsApp bans) - DISABLED FOR QR GENERATION
+      # - PROXY_ENABLED=false
+      # - PROXY_HOST=64.137.96.74
+      # - PROXY_PORT=6641
+      # - PROXY_PROTOCOL=http
+      # - PROXY_USERNAME=uinbxahu
+      # - PROXY_PASSWORD=uqv5j7zcmpm4
+
+      # Browser fingerprint (appears as Windows Chrome user)
+      - BROWSER_CLIENT=Chrome (Windows)
+      - BROWSER_VERSION=120.0.6099.130
+
+    volumes:
+      - evolution_instances:/evolution/instances
+      - evolution_store:/evolution/store
+
+    networks:
+      - evolution-network
+
+    depends_on:
+      - postgres-evolution
+      - redis-evolution
+
+    restart: unless-stopped
+
+  # PostgreSQL Database for Evolution API
+  postgres-evolution:
+    image: postgres:15-alpine
+    container_name: postgres-evolution
+    environment:
+      - POSTGRES_USER=evolution
+      - POSTGRES_PASSWORD=evolution
+      - POSTGRES_DB=evolution
+    volumes:
+      - postgres_evolution_data:/var/lib/postgresql/data
+    networks:
+      - evolution-network
+    restart: unless-stopped
+
+  # Redis Cache for Evolution API
+  redis-evolution:
+    image: redis:7-alpine
+    container_name: redis-evolution
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_evolution_data:/data
+    networks:
+      - evolution-network
+    restart: unless-stopped
+
+  # N8N - Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      # Basic Config
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678
+
+      # Database - SQLite (simple) or PostgreSQL (production)
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+
+      # Security
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD:-admin123}
+
+      # Timezone
+      - GENERIC_TIMEZONE=America/Sao_Paulo
+      - TZ=America/Sao_Paulo
+
+      # Execution settings
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_ON_PROGRESS=true
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+
+      # Encoding
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - evolution-network
+    restart: unless-stopped
+
+volumes:
+  evolution_instances:
+  evolution_store:
+  postgres_evolution_data:
+  redis_evolution_data:
+  n8n_data:
+
+networks:
+  evolution-network:
+    driver: bridge

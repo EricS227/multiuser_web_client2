@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code WhatsApp - Evolution API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+
+        .qr-container {
+            background: #f5f5f5;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #qrcode {
+            max-width: 100%;
+            height: auto;
+            display: none;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+
+        .status.loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status.ready {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .instructions {
+            text-align: left;
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .instructions h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #555;
+            line-height: 1.8;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 5px;
+            text-align: left;
+        }
+
+        .warning strong {
+            color: #856404;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .warning ul {
+            margin-left: 20px;
+            color: #856404;
+            font-size: 14px;
+        }
+
+        .config {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e9ecef;
+            border-radius: 10px;
+            font-size: 12px;
+            color: #495057;
+        }
+
+        .config strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 WhatsApp QR Code</h1>
+        <p class="subtitle">Evolution API - Instância Protegida com Proxy</p>
+
+        <div class="qr-container">
+            <img id="qrcode" alt="QR Code WhatsApp">
+            <div id="loading" style="display: flex; flex-direction: column; align-items: center; gap: 15px;">
+                <div class="spinner"></div>
+                <p style="color: #666;">Gerando QR Code...</p>
+            </div>
+        </div>
+
+        <div id="status" class="status loading">
+            <div class="spinner"></div>
+            <span>Conectando à Evolution API...</span>
+        </div>
+
+        <button id="refreshBtn" onclick="fetchQRCode()">🔄 Atualizar QR Code</button>
+
+        <div class="instructions">
+            <h3>📋 Como Escanear:</h3>
+            <ol>
+                <li>Abra o WhatsApp no seu <strong>número NOVO</strong></li>
+                <li>Toque em <strong>⋮ Mais opções</strong> → <strong>Aparelhos conectados</strong></li>
+                <li>Toque em <strong>Conectar um aparelho</strong></li>
+                <li>Aponte a câmera para este QR Code</li>
+            </ol>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ IMPORTANTE:</strong>
+            <ul>
+                <li>Use APENAS o número NOVO do chip que você conseguiu</li>
+                <li>NÃO use o número que foi banido</li>
+                <li>QR Code expira em 30 segundos</li>
+                <li>Conexão protegida por proxy anti-ban</li>
+            </ul>
+        </div>
+
+        <div class="config">
+            <strong>🔐 Configuração de Segurança:</strong>
+            <div>✅ Proxy: 64.137.96.74:6641</div>
+            <div>✅ Browser: Chrome (Windows)</div>
+            <div>✅ Warmup Mode: Ativado</div>
+            <div>✅ Rate Limiting: 1 mensagem/dia</div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8080';
+        const API_KEY = 'mude-esta-chave-para-producao';
+        const INSTANCE_NAME = 'numero_novo';
+        const INSTANCE_ID = '457d1452-6463-41a9-b4b5-cedd8c7ada87';
+
+        let refreshInterval;
+
+        async function fetchQRCode() {
+            const statusDiv = document.getElementById('status');
+            const qrcodeImg = document.getElementById('qrcode');
+            const loadingDiv = document.getElementById('loading');
+            const refreshBtn = document.getElementById('refreshBtn');
+
+            try {
+                refreshBtn.disabled = true;
+                statusDiv.className = 'status loading';
+                statusDiv.innerHTML = '<div class="spinner"></div><span>Buscando QR Code...</span>';
+
+                // Primeiro, verificar estado da conexão
+                const stateResponse = await fetch(`${API_URL}/instance/connectionState/${INSTANCE_NAME}`, {
+                    headers: {
+                        'apikey': API_KEY
+                    }
+                });
+
+                const stateData = await stateResponse.json();
+                console.log('Connection state:', stateData);
+
+                // Buscar QR Code
+                const qrResponse = await fetch(`${API_URL}/instance/connect/${INSTANCE_NAME}`, {
+                    headers: {
+                        'apikey': API_KEY
+                    }
+                });
+
+                const qrData = await qrResponse.json();
+                console.log('QR Code data:', qrData);
+
+                if (qrData.code || qrData.base64) {
+                    // QR Code disponível
+                    const qrCode = qrData.base64 || qrData.code;
+                    qrcodeImg.src = qrCode.startsWith('data:') ? qrCode : `data:image/png;base64,${qrCode}`;
+                    qrcodeImg.style.display = 'block';
+                    loadingDiv.style.display = 'none';
+
+                    statusDiv.className = 'status ready';
+                    statusDiv.innerHTML = '✅ <span>QR Code pronto! Escaneie agora</span>';
+
+                    // Auto-refresh a cada 25 segundos (antes de expirar)
+                    clearInterval(refreshInterval);
+                    refreshInterval = setInterval(fetchQRCode, 25000);
+
+                } else if (qrData.count === 0) {
+                    // Sem QR Code disponível
+                    qrcodeImg.style.display = 'none';
+                    loadingDiv.style.display = 'flex';
+
+                    if (stateData.instance?.state === 'open') {
+                        statusDiv.className = 'status ready';
+                        statusDiv.innerHTML = '✅ <span>WhatsApp já está conectado!</span>';
+                        clearInterval(refreshInterval);
+                        loadingDiv.innerHTML = '<div style="font-size: 48px;">✅</div><p style="color: #28a745; font-weight: 600;">Conectado com Sucesso!</p>';
+                    } else {
+                        statusDiv.className = 'status error';
+                        statusDiv.innerHTML = '⚠️ <span>QR Code não disponível. Estado: ' + (stateData.instance?.state || 'unknown') + '</span>';
+
+                        loadingDiv.innerHTML = `
+                            <p style="color: #dc3545; font-weight: 600;">QR Code não gerado</p>
+                            <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                                A instância está em estado: <strong>${stateData.instance?.state || 'unknown'}</strong>
+                            </p>
+                            <p style="color: #666; font-size: 14px;">
+                                Clique em "Atualizar QR Code" para tentar novamente
+                            </p>
+                        `;
+                    }
+
+                } else {
+                    throw new Error('Formato de resposta inesperado');
+                }
+
+            } catch (error) {
+                console.error('Erro ao buscar QR Code:', error);
+
+                statusDiv.className = 'status error';
+                statusDiv.innerHTML = '❌ <span>Erro ao conectar: ' + error.message + '</span>';
+
+                qrcodeImg.style.display = 'none';
+                loadingDiv.style.display = 'flex';
+                loadingDiv.innerHTML = `
+                    <p style="color: #dc3545; font-weight: 600;">Erro de Conexão</p>
+                    <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                        Verifique se a Evolution API está rodando em ${API_URL}
+                    </p>
+                `;
+
+                clearInterval(refreshInterval);
+            } finally {
+                refreshBtn.disabled = false;
+            }
+        }
+
+        // Buscar QR Code ao carregar a página
+        fetchQRCode();
+
+        // Auto-refresh inicial a cada 5 segundos até conseguir o QR Code
+        const initialInterval = setInterval(() => {
+            const qrcodeImg = document.getElementById('qrcode');
+            if (qrcodeImg.style.display === 'block') {
+                clearInterval(initialInterval);
+            } else {
+                fetchQRCode();
+            }
+        }, 5000);
+
+        // Limpar interval ao fechar a página
+        window.addEventListener('beforeunload', () => {
+            clearInterval(refreshInterval);
+            clearInterval(initialInterval);
+        });
+    </script>
+</body>
+</html>
