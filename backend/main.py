@@ -29,6 +29,7 @@ from backend.enhanced_chatbot_service import EnhancedClaudeChatbotService
 from backend.models import User, Conversation, Message, AuditLog, BotInteraction, BotContext, Usuario, brazilian_now
 from backend.n8n_service import n8n_service
 from backend.evolution_service import evolution_service
+from backend.waha_service import waha_service
 
 import httpx
 import os
@@ -2602,6 +2603,176 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+# ===== WAHA (WhatsApp HTTP API) ENDPOINTS =====
+
+@app.get("/api/waha/status")
+async def get_waha_status(user: User = Depends(get_current_user)):
+    """Check WAHA instance status"""
+    if user.role not in ["admin", "agent"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    try:
+        status = await waha_service.get_session_status()
+        return {
+            "enabled": waha_service.enabled,
+            "session_name": waha_service.session_name,
+            "base_url": waha_service.base_url,
+            "status": status
+        }
+    except Exception as e:
+        return {"error": str(e), "enabled": False}
+
+
+@app.post("/api/waha/start-session")
+async def start_waha_session(user: User = Depends(get_current_user)):
+    """Start WAHA WhatsApp session"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins")
+
+    try:
+        result = await waha_service.start_session()
+        if result:
+            return {"status": "success", "data": result}
+        return {"status": "error", "message": "Failed to start session"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/waha/stop-session")
+async def stop_waha_session(user: User = Depends(get_current_user)):
+    """Stop WAHA WhatsApp session"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins")
+
+    try:
+        result = await waha_service.stop_session()
+        return {"status": "success", "data": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/waha/qrcode")
+async def get_waha_qrcode(user: User = Depends(get_current_user)):
+    """Get QR code for WAHA authentication"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins")
+
+    try:
+        qr_data = await waha_service.get_qrcode()
+        if qr_data:
+            return {"status": "success", "qrcode": qr_data}
+        return {"status": "error", "message": "Failed to get QR code"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/waha/logout")
+async def waha_logout(user: User = Depends(get_current_user)):
+    """Logout from WAHA WhatsApp"""
+    if user.role != "admin":
+        raise HTTPException(status_code=403, detail="Apenas admins")
+
+    try:
+        result = await waha_service.logout()
+        return {"status": "success", "data": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/waha/send-message")
+async def waha_send_message(
+    to_number: str,
+    message: str,
+    user: User = Depends(get_current_user)
+):
+    """Send message via WAHA"""
+    if user.role not in ["admin", "agent"]:
+        raise HTTPException(status_code=403, detail="Acesso negado")
+
+    try:
+        result = await waha_service.send_text_message(to_number, message)
+        if result:
+            return {"status": "success", "data": result}
+        return {"status": "error", "message": "Failed to send message"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/webhook/waha")
+async def waha_webhook(request: Request):
+    """
+    Webhook to receive messages from WAHA
+    WAHA sends messages to this endpoint
+    """
+    try:
+        data = await request.json()
+
+        print(f"WAHA webhook received: {data.get('event', 'unknown')}")
+
+        event = data.get("event")
+
+        # Handle incoming messages
+        if event in ["message", "message.any"]:
+            payload = data.get("payload", {})
+
+            # Ignore messages from us
+            from_me = payload.get("fromMe", False)
+            if from_me:
+                print("Ignoring message from us")
+                return {"status": "ignored", "reason": "message from us"}
+
+            # Extract message info
+            chat_id = payload.get("from", "")
+            phone_number = chat_id.replace("@c.us", "").replace("@s.whatsapp.net", "")
+            message_body = payload.get("body", "")
+            push_name = payload.get("notifyName", "Cliente")
+
+            if not message_body:
+                print("Ignoring non-text message")
+                return {"status": "ignored", "reason": "no text content"}
+
+            print(f"Message from {phone_number} ({push_name}): {message_body}")
+
+            # Process through chatbot
+            with Session(engine) as session:
+                chatbot_service = EnhancedClaudeChatbotService(session)
+                result = await chatbot_service.process_message(phone_number, message_body, push_name)
+
+                bot_response = result.get('bot_response')
+                bot_service = result.get('bot_service', 'unknown')
+                should_escalate = result['should_escalate']
+
+                if bot_response:
+                    print(f"BOT ({bot_service}) responding: {bot_response}")
+
+            # Send response via WAHA
+            if bot_response:
+                await waha_service.send_text_message(phone_number, bot_response)
+
+            return {
+                "status": "processed",
+                "response": bot_response,
+                "bot_service": bot_service,
+                "escalated": should_escalate
+            }
+
+        # Handle session status changes
+        elif event == "session.status":
+            status = data.get("payload", {}).get("status")
+            print(f"WAHA session status: {status}")
+            return {"status": "ok", "event": event}
+
+        return {"status": "ok", "event": event}
+
+    except Exception as e:
+        print(f"WAHA webhook error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
+
+
+# ===== STATIC FILES =====
+
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
 # Only mount static files if directory exists
@@ -2614,6 +2785,7 @@ else:
 print("FastAPI application startup completed successfully!")
 print("All routes and endpoints are now available.")
 print(f"n8n integration: {'enabled' if n8n_service.enabled else 'disabled'}")
+print(f"WAHA integration: {'enabled' if waha_service.enabled else 'disabled'}")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
