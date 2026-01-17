@@ -1,0 +1,161 @@
+services:
+  # ============================
+  # WAHA - WhatsApp HTTP API
+  # ============================
+  waha:
+    image: devlikeapro/waha:latest
+    container_name: waha
+    ports:
+      - "3000:3000"
+    environment:
+      # Webhook para n8n processar mensagens
+      WHATSAPP_HOOK_URL: http://n8n:5678/webhook/whatsapp
+      WHATSAPP_HOOK_EVENTS: message,message.any,state.change,session.status
+      # Dashboard
+      WAHA_DASHBOARD_ENABLED: "true"
+      WAHA_DASHBOARD_USERNAME: admin
+      WAHA_DASHBOARD_PASSWORD: admin123
+      # API
+      WAHA_API_KEY: B6D711FCDE4D4FD5936544120E713976
+    volumes:
+      - waha_sessions:/app/.sessions
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ============================
+  # FASTAPI - Backend Core
+  # ============================
+  fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi-chatapp
+    ports:
+      - "8000:8000"
+    environment:
+      # App Config
+      SECRET_KEY: minha-chave-secreta-producao-123
+      PYTHONUNBUFFERED: "1"
+      # Database
+      DATABASE_URL: postgresql://postgres:postgres123@postgres:5432/chatapp
+      # WAHA Config
+      WAHA_ENABLED: "true"
+      WAHA_API_URL: http://waha:3000
+      WAHA_API_KEY: B6D711FCDE4D4FD5936544120E713976
+      WAHA_SESSION_NAME: default
+      # n8n Integration
+      N8N_ENABLED: "true"
+      N8N_WEBHOOK_URL: http://n8n:5678
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # Ollama (IA Local)
+      OLLAMA_ENABLED: "true"
+      OLLAMA_URL: http://ollama:11434
+    volumes:
+      - fastapi_data:/app/data
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+      - redis
+      - waha
+    restart: unless-stopped
+
+  # ============================
+  # N8N - Automação de Fluxos
+  # ============================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    ports:
+      - "5678:5678"
+    environment:
+      N8N_HOST: "0.0.0.0"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://n8n:5678
+      # Database
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: "5432"
+      DB_POSTGRESDB_DATABASE: n8n
+      DB_POSTGRESDB_USER: postgres
+      DB_POSTGRESDB_PASSWORD: postgres123
+      # Auth
+      N8N_BASIC_AUTH_ACTIVE: "true"
+      N8N_BASIC_AUTH_USER: admin
+      N8N_BASIC_AUTH_PASSWORD: admin123
+      # Timezone
+      GENERIC_TIMEZONE: America/Sao_Paulo
+      TZ: America/Sao_Paulo
+      # Executions
+      EXECUTIONS_DATA_SAVE_ON_ERROR: all
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - app-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # ============================
+  # POSTGRESQL - Database Principal
+  # ============================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_MULTIPLE_DATABASES: chatapp,n8n
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ============================
+  # REDIS - Cache e Filas
+  # ============================
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # ============================
+  # OLLAMA - IA Local (Opcional)
+  # ============================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  waha_sessions:
+  fastapi_data:
+  n8n_data:
+  postgres_data:
+  redis_data:
+  ollama_data:
+
+networks:
+  app-network:
+    driver: bridge
