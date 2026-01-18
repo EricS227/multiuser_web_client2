@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel do Dono - Gas Express</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 250px 1fr 350px;
+            height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .menu-item {
+            padding: 12px 15px;
+            margin: 5px 0;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .menu-item:hover, .menu-item.active {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .stats-box {
+            background: rgba(255,255,255,0.15);
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stat-value {
+            font-weight: bold;
+            color: #fff;
+        }
+
+        /* Main Content */
+        .main-content {
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            color: #667eea;
+        }
+
+        .status-badge {
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+
+        .status-online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        /* Cards de Pedidos */
+        .orders-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .order-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .order-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .order-id {
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .order-status {
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+        }
+
+        .status-novo { background: #fff3cd; color: #856404; }
+        .status-confirmado { background: #cce5ff; color: #004085; }
+        .status-em_preparo { background: #d4edda; color: #155724; }
+        .status-saiu_entrega { background: #d1ecf1; color: #0c5460; }
+        .status-entregue { background: #d4edda; color: #155724; }
+        .status-cancelado { background: #f8d7da; color: #721c24; }
+
+        .order-info p {
+            margin: 5px 0;
+            color: #666;
+        }
+
+        .order-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+
+        /* Mapa */
+        .map-section {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        #map {
+            height: 400px;
+            border-radius: 8px;
+        }
+
+        /* Chat/Mensagens */
+        .chat-panel {
+            background: white;
+            border-left: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid #ddd;
+            font-weight: bold;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            max-width: 80%;
+        }
+
+        .message.incoming {
+            margin-right: auto;
+        }
+
+        .message.outgoing {
+            margin-left: auto;
+        }
+
+        .message-bubble {
+            padding: 10px 15px;
+            border-radius: 15px;
+        }
+
+        .incoming .message-bubble {
+            background: #f0f0f0;
+        }
+
+        .outgoing .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-info {
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .chat-input {
+            padding: 15px;
+            border-top: 1px solid #ddd;
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid #ddd;
+            border-radius: 20px;
+            outline: none;
+        }
+
+        .chat-input button {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        /* Indicador de conexão */
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-dot.connected { background: #28a745; }
+        .status-dot.disconnected { background: #dc3545; }
+
+        /* Lista de conversas */
+        .conversation-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .conversation-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+        }
+
+        .conversation-item:hover, .conversation-item.active {
+            background: #f0f0ff;
+        }
+
+        .conversation-name {
+            font-weight: bold;
+        }
+
+        .conversation-preview {
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .unread-badge {
+            background: #667eea;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">Gas Express</div>
+            
+            <div class="menu-item active" onclick="showSection('pedidos')">
+                📦 Pedidos
+            </div>
+            <div class="menu-item" onclick="showSection('entregadores')">
+                🛵 Entregadores
+            </div>
+            <div class="menu-item" onclick="showSection('clientes')">
+                👥 Clientes
+            </div>
+            <div class="menu-item" onclick="showSection('produtos')">
+                🔥 Produtos
+            </div>
+            <div class="menu-item" onclick="showSection('relatorios')">
+                📊 Relatórios
+            </div>
+
+            <div class="stats-box">
+                <h4>Resumo Hoje</h4>
+                <div class="stat-item">
+                    <span>Pedidos</span>
+                    <span class="stat-value" id="stat-pedidos">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>Entregas</span>
+                    <span class="stat-value" id="stat-entregas">0</span>
+                </div>
+                <div class="stat-item">
+                    <span>Faturamento</span>
+                    <span class="stat-value" id="stat-faturamento">R$ 0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <h1>Pedidos</h1>
+                <div class="connection-status">
+                    <span class="status-dot" id="ws-status"></span>
+                    <span id="ws-status-text">Conectando...</span>
+                </div>
+            </div>
+
+            <!-- Cards de Pedidos -->
+            <div class="orders-grid" id="orders-container">
+                <!-- Pedidos serão inseridos via JavaScript -->
+            </div>
+
+            <!-- Mapa com Entregadores -->
+            <div class="map-section">
+                <h3>Entregadores em Tempo Real</h3>
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <!-- Chat Panel -->
+        <div class="chat-panel">
+            <div class="chat-header">
+                💬 Mensagens
+                <div class="connection-status" style="float: right;">
+                    <span class="status-dot" id="chat-ws-status"></span>
+                </div>
+            </div>
+
+            <!-- Lista de Conversas -->
+            <div class="conversation-list" id="conversation-list">
+                <!-- Conversas serão inseridas via JavaScript -->
+            </div>
+
+            <!-- Mensagens da Conversa Ativa -->
+            <div class="chat-messages" id="chat-messages">
+                <p style="color: #999; text-align: center;">Selecione uma conversa</p>
+            </div>
+
+            <!-- Input de Mensagem -->
+            <div class="chat-input">
+                <input type="text" id="message-input" placeholder="Digite sua mensagem..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Enviar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // ===== CONFIGURAÇÃO =====
+        const API_URL = 'http://localhost:8000';
+        const WS_URL = 'ws://localhost:8000/ws';
+        
+        let token = localStorage.getItem('access_token');
+        let websocket = null;
+        let currentConversation = null;
+        let map = null;
+        let driverMarkers = {};
+
+        // ===== WEBSOCKET =====
+        function connectWebSocket() {
+            websocket = new WebSocket(`${WS_URL}?token=${token}`);
+
+            websocket.onopen = () => {
+                console.log('WebSocket conectado');
+                updateConnectionStatus(true);
+            };
+
+            websocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+
+            websocket.onclose = () => {
+                console.log('WebSocket desconectado');
+                updateConnectionStatus(false);
+                // Reconectar após 3 segundos
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            websocket.onerror = (error) => {
+                console.error('WebSocket erro:', error);
+                updateConnectionStatus(false);
+            };
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDot = document.getElementById('ws-status');
+            const statusText = document.getElementById('ws-status-text');
+            const chatStatus = document.getElementById('chat-ws-status');
+
+            if (connected) {
+                statusDot.className = 'status-dot connected';
+                chatStatus.className = 'status-dot connected';
+                statusText.textContent = 'Conectado';
+            } else {
+                statusDot.className = 'status-dot disconnected';
+                chatStatus.className = 'status-dot disconnected';
+                statusText.textContent = 'Desconectado';
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            console.log('Mensagem recebida:', data);
+
+            // Nova mensagem de chat
+            if (data.type === 'new_message' || data.sender) {
+                addMessageToChat(data);
+                playNotificationSound();
+                loadConversations();
+            }
+
+            // Novo pedido
+            if (data.type === 'new_order') {
+                showNotification('Novo Pedido!', `#${data.order.id} - ${data.order.customer_name}`);
+                addOrderCard(data.order);
+                playNotificationSound();
+                updateStats();
+            }
+
+            // Atualização de pedido
+            if (data.type === 'order_update') {
+                updateOrderStatus(data.order_id, data.status, data.action);
+                loadOrders();
+            }
+
+            // Atualização de localização do entregador
+            if (data.type === 'driver_location') {
+                updateDriverMarker(data.driver_id, data.latitude, data.longitude, data.name);
+            }
+
+            // Nova escalação
+            if (data.type === 'new_escalation') {
+                showNotification('Novo atendimento!', data.customer_name);
+                loadConversations();
+            }
+        }
+
+        // Adiciona card de pedido em tempo real
+        function addOrderCard(order) {
+            const container = document.getElementById('orders-container');
+            const noOrdersMsg = container.querySelector('p');
+            if (noOrdersMsg) noOrdersMsg.remove();
+
+            const card = document.createElement('div');
+            card.className = 'order-card';
+            card.id = `order-${order.id}`;
+            card.innerHTML = `
+                <div class="order-header">
+                    <span class="order-id">#${order.id}</span>
+                    <span class="order-status status-novo">NOVO</span>
+                </div>
+                <div class="order-info">
+                    <p><strong>Cliente:</strong> ${order.customer_name}</p>
+                    <p><strong>Endereço:</strong> ${order.endereco_entrega}, ${order.numero_entrega}</p>
+                    <p><strong>Bairro:</strong> ${order.bairro_entrega}</p>
+                    <p><strong>Total:</strong> R$ ${order.total.toFixed(2)}</p>
+                </div>
+                <div class="order-actions">
+                    <button class="btn btn-primary" onclick="confirmOrder(${order.id})">Confirmar</button>
+                    <button class="btn btn-danger" onclick="cancelOrder(${order.id})">Cancelar</button>
+                </div>
+            `;
+            container.insertBefore(card, container.firstChild);
+        }
+
+        // Atualiza status visual do pedido
+        function updateOrderStatus(orderId, status, action) {
+            const card = document.getElementById(`order-${orderId}`);
+            if (!card) return;
+
+            const statusBadge = card.querySelector('.order-status');
+            if (statusBadge) {
+                statusBadge.className = `order-status status-${status}`;
+                statusBadge.textContent = status.toUpperCase().replace('_', ' ');
+            }
+
+            // Remove card se entregue ou cancelado
+            if (status === 'entregue' || status === 'cancelado') {
+                setTimeout(() => card.remove(), 2000);
+            }
+        }
+
+        // Atualiza estatísticas
+        async function updateStats() {
+            try {
+                const response = await fetch(`${API_URL}/api/orders/pending`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const orders = await response.json();
+                    document.getElementById('stat-pedidos').textContent = orders.length;
+                }
+            } catch (error) {
+                console.error('Erro ao atualizar stats:', error);
+            }
+        }
+
+        // ===== MENSAGENS =====
+        function addMessageToChat(data) {
+            if (currentConversation && data.conversation_id === currentConversation) {
+                const container = document.getElementById('chat-messages');
+                const isOutgoing = data.sender === 'agent' || data.sender === 'bot';
+                
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${isOutgoing ? 'outgoing' : 'incoming'}`;
+                messageDiv.innerHTML = `
+                    <div class="message-bubble">${data.message || data.content}</div>
+                    <div class="message-info">${formatTime(data.timestamp)}</div>
+                `;
+                container.appendChild(messageDiv);
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const message = input.value.trim();
+
+            if (!message || !currentConversation) return;
+
+            try {
+                const response = await fetch(`${API_URL}/conversations/${currentConversation}/reply`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                if (response.ok) {
+                    input.value = '';
+                    // Mensagem será adicionada via WebSocket
+                }
+            } catch (error) {
+                console.error('Erro ao enviar mensagem:', error);
+            }
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        // ===== CONVERSAS =====
+        async function loadConversations() {
+            try {
+                const response = await fetch(`${API_URL}/conversations`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const conversations = await response.json();
+                renderConversations(conversations);
+            } catch (error) {
+                console.error('Erro ao carregar conversas:', error);
+            }
+        }
+
+        function renderConversations(conversations) {
+            const container = document.getElementById('conversation-list');
+            container.innerHTML = conversations.map(conv => `
+                <div class="conversation-item ${currentConversation === conv.id ? 'active' : ''}" 
+                     onclick="selectConversation(${conv.id})">
+                    <div class="conversation-name">
+                        ${conv.name || conv.customer_number}
+                        ${conv.unread ? `<span class="unread-badge">${conv.unread}</span>` : ''}
+                    </div>
+                    <div class="conversation-preview">${conv.last_message || 'Sem mensagens'}</div>
+                </div>
+            `).join('');
+        }
+
+        async function selectConversation(conversationId) {
+            currentConversation = conversationId;
+            loadConversations(); // Atualizar visual
+
+            try {
+                const response = await fetch(`${API_URL}/conversations/${conversationId}/messages`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const messages = await response.json();
+                renderMessages(messages);
+            } catch (error) {
+                console.error('Erro ao carregar mensagens:', error);
+            }
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = messages.map(msg => {
+                const isOutgoing = msg.sender === 'agent' || msg.sender === 'bot';
+                return `
+                    <div class="message ${isOutgoing ? 'outgoing' : 'incoming'}">
+                        <div class="message-bubble">${msg.content}</div>
+                        <div class="message-info">${msg.sender} - ${formatTime(msg.timestamp)}</div>
+                    </div>
+                `;
+            }).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ===== PEDIDOS =====
+        async function loadOrders() {
+            try {
+                const response = await fetch(`${API_URL}/api/orders/pending`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const orders = await response.json();
+                    renderOrders(orders);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar pedidos:', error);
+            }
+        }
+
+        function renderOrders(orders) {
+            const container = document.getElementById('orders-container');
+            
+            if (orders.length === 0) {
+                container.innerHTML = '<p style="color: #999;">Nenhum pedido pendente</p>';
+                return;
+            }
+
+            container.innerHTML = orders.map(order => `
+                <div class="order-card">
+                    <div class="order-header">
+                        <span class="order-id">#${order.id}</span>
+                        <span class="order-status status-${order.status}">${order.status}</span>
+                    </div>
+                    <div class="order-info">
+                        <p><strong>Cliente:</strong> ${order.customer_name || 'N/A'}</p>
+                        <p><strong>Endereço:</strong> ${order.endereco_entrega}, ${order.numero_entrega}</p>
+                        <p><strong>Bairro:</strong> ${order.bairro_entrega}</p>
+                        <p><strong>Total:</strong> R$ ${order.total.toFixed(2)}</p>
+                    </div>
+                    <div class="order-actions">
+                        ${order.status === 'novo' ? `
+                            <button class="btn btn-primary" onclick="confirmOrder(${order.id})">Confirmar</button>
+                            <button class="btn btn-danger" onclick="cancelOrder(${order.id})">Cancelar</button>
+                        ` : ''}
+                        ${order.status === 'confirmado' ? `
+                            <button class="btn btn-success" onclick="assignDriver(${order.id})">Atribuir Entregador</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function confirmOrder(orderId) {
+            try {
+                await fetch(`${API_URL}/api/orders/${orderId}/confirm`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                loadOrders();
+            } catch (error) {
+                console.error('Erro ao confirmar pedido:', error);
+            }
+        }
+
+        async function cancelOrder(orderId) {
+            const motivo = prompt('Motivo do cancelamento:');
+            if (!motivo) return;
+
+            try {
+                await fetch(`${API_URL}/api/orders/${orderId}/cancel`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ motivo })
+                });
+                loadOrders();
+            } catch (error) {
+                console.error('Erro ao cancelar pedido:', error);
+            }
+        }
+
+        // ===== MAPA =====
+        function initMap() {
+            map = L.map('map').setView([-25.4284, -49.2733], 13); // Curitiba
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        function updateDriverMarker(driverId, lat, lng, name) {
+            if (driverMarkers[driverId]) {
+                driverMarkers[driverId].setLatLng([lat, lng]);
+            } else {
+                const marker = L.marker([lat, lng]).addTo(map);
+                marker.bindPopup(`<b>${name}</b><br>Entregador`);
+                driverMarkers[driverId] = marker;
+            }
+        }
+
+        async function loadDriverLocations() {
+            try {
+                const response = await fetch(`${API_URL}/api/drivers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (response.ok) {
+                    const drivers = await response.json();
+                    drivers.forEach(driver => {
+                        if (driver.latitude && driver.longitude) {
+                            updateDriverMarker(driver.id, driver.latitude, driver.longitude, driver.nome);
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Erro ao carregar entregadores:', error);
+            }
+        }
+
+        // ===== UTILITÁRIOS =====
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function playNotificationSound() {
+            // Implementar som de notificação se desejar
+        }
+
+        function showNotification(title, body) {
+            if (Notification.permission === 'granted') {
+                new Notification(title, { body });
+            }
+        }
+
+        function showSection(section) {
+            // Implementar navegação entre seções
+            document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        // ===== INICIALIZAÇÃO =====
+        document.addEventListener('DOMContentLoaded', () => {
+            // Verificar autenticação
+            if (!token) {
+                window.location.href = '/index.html';
+                return;
+            }
+
+            // Pedir permissão para notificações
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+
+            // Inicializar
+            connectWebSocket();
+            initMap();
+            loadConversations();
+            loadOrders();
+            loadDriverLocations();
+
+            // Atualizar periodicamente
+            setInterval(loadOrders, 30000);
+            setInterval(loadDriverLocations, 10000);
+        });
+    </script>
+</body>
+</html>
