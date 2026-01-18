@@ -30,6 +30,8 @@ from backend.models import User, Conversation, Message, AuditLog, BotInteraction
 from backend.n8n_service import n8n_service
 from backend.evolution_service import evolution_service
 from backend.waha_service import waha_service
+from backend.models.delivery_models import Customer, Product, Driver, Order, OrderItem, Delivery, OrderStatus, DriverStatus
+from backend.services import CustomerService, OrderService, DeliveryService, DriverService, ProductService
 
 import httpx
 import os
@@ -2769,6 +2771,334 @@ async def waha_webhook(request: Request):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": str(e)}
+
+
+# ===== DELIVERY SYSTEM ENDPOINTS =====
+
+# --- Products ---
+@app.get("/api/products")
+def list_products(session: Session = Depends(get_session)):
+    """Lista todos os produtos"""
+    service = ProductService(session)
+    return service.list_all()
+
+@app.get("/api/products/available")
+def list_available_products(session: Session = Depends(get_session)):
+    """Lista produtos disponíveis em estoque"""
+    service = ProductService(session)
+    return service.list_available()
+
+@app.post("/api/products/init")
+def init_products(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Cria produtos padrão (P13, P20, P45)"""
+    service = ProductService(session)
+    service.create_default_products()
+    return {"msg": "Produtos criados com sucesso"}
+
+# --- Customers ---
+@app.get("/api/customers")
+def list_customers(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Lista todos os clientes"""
+    service = CustomerService(session)
+    return service.list_all()
+
+@app.get("/api/customers/{customer_id}")
+def get_customer(customer_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Busca cliente por ID"""
+    service = CustomerService(session)
+    customer = service.get_by_id(customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    return customer
+
+@app.get("/api/customers/phone/{telefone}")
+def get_customer_by_phone(telefone: str, session: Session = Depends(get_session)):
+    """Busca cliente por telefone"""
+    service = CustomerService(session)
+    customer = service.get_by_phone(telefone)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+    return customer
+
+class CustomerCreate(BaseModel):
+    nome: str
+    telefone: str
+    endereco: str
+    numero: str
+    bairro: str
+    complemento: Optional[str] = None
+    cidade: str = "Curitiba"
+    estado: str = "PR"
+    cep: Optional[str] = None
+    ponto_referencia: Optional[str] = None
+
+@app.post("/api/customers")
+def create_customer(data: CustomerCreate, session: Session = Depends(get_session)):
+    """Cria novo cliente"""
+    service = CustomerService(session)
+    customer = service.create(**data.model_dump())
+    return customer
+
+# --- Drivers ---
+@app.get("/api/drivers")
+def list_drivers(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Lista todos os entregadores"""
+    service = DriverService(session)
+    return service.list_all()
+
+@app.get("/api/drivers/available")
+def list_available_drivers(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Lista entregadores disponíveis"""
+    service = DriverService(session)
+    return service.list_available()
+
+class DriverCreate(BaseModel):
+    nome: str
+    telefone: str
+    veiculo: Optional[str] = None
+    placa: Optional[str] = None
+
+@app.post("/api/drivers")
+def create_driver(data: DriverCreate, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Cria novo entregador"""
+    service = DriverService(session)
+    driver = service.create(**data.model_dump())
+    return driver
+
+@app.post("/api/drivers/{driver_id}/online")
+def driver_go_online(driver_id: int, session: Session = Depends(get_session)):
+    """Coloca entregador online"""
+    service = DriverService(session)
+    driver = service.go_online(driver_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Entregador não encontrado")
+    return driver
+
+@app.post("/api/drivers/{driver_id}/offline")
+def driver_go_offline(driver_id: int, session: Session = Depends(get_session)):
+    """Coloca entregador offline"""
+    service = DriverService(session)
+    driver = service.go_offline(driver_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Entregador não encontrado")
+    return driver
+
+class LocationUpdate(BaseModel):
+    latitude: float
+    longitude: float
+
+@app.post("/api/drivers/{driver_id}/location")
+def update_driver_location(driver_id: int, data: LocationUpdate, session: Session = Depends(get_session)):
+    """Atualiza localização do entregador"""
+    service = DriverService(session)
+    driver = service.update_location(driver_id, data.latitude, data.longitude)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Entregador não encontrado")
+    return driver
+
+# --- Orders ---
+@app.get("/api/orders/pending")
+def list_pending_orders(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Lista pedidos pendentes"""
+    service = OrderService(session)
+    return service.list_pending()
+
+@app.get("/api/orders/in-delivery")
+def list_orders_in_delivery(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Lista pedidos em entrega"""
+    service = OrderService(session)
+    return service.list_in_delivery()
+
+@app.get("/api/orders/{order_id}")
+def get_order(order_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Busca pedido por ID"""
+    service = OrderService(session)
+    order = service.get_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+    return order
+
+class OrderItemCreate(BaseModel):
+    product_id: int
+    quantidade: int = 1
+    tem_troca: bool = True
+
+class OrderCreate(BaseModel):
+    customer_id: int
+    items: List[OrderItemCreate]
+    endereco_entrega: Optional[str] = None
+    numero_entrega: Optional[str] = None
+    bairro_entrega: Optional[str] = None
+    observacoes: Optional[str] = None
+    forma_pagamento: Optional[str] = None
+    troco_para: Optional[float] = None
+
+@app.post("/api/orders")
+async def create_order(data: OrderCreate, session: Session = Depends(get_session)):
+    """Cria novo pedido"""
+    customer_service = CustomerService(session)
+    customer = customer_service.get_by_id(data.customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    order_service = OrderService(session)
+    items = [item.model_dump() for item in data.items]
+    order = order_service.create(
+        customer=customer,
+        items=items,
+        endereco_entrega=data.endereco_entrega,
+        numero_entrega=data.numero_entrega,
+        bairro_entrega=data.bairro_entrega,
+        observacoes=data.observacoes
+    )
+
+    # Broadcast para painéis
+    await manager.broadcast({
+        "type": "new_order",
+        "order": {
+            "id": order.id,
+            "status": order.status.value if hasattr(order.status, 'value') else order.status,
+            "customer_name": customer.nome,
+            "customer_phone": customer.telefone,
+            "endereco_entrega": order.endereco_entrega,
+            "numero_entrega": order.numero_entrega,
+            "bairro_entrega": order.bairro_entrega,
+            "total": float(order.total) if order.total else 0,
+            "created_at": order.created_at.isoformat() if order.created_at else None
+        }
+    })
+
+    return order
+
+@app.post("/api/orders/{order_id}/confirm")
+async def confirm_order(order_id: int, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Confirma pedido"""
+    service = OrderService(session)
+    order = service.confirm(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+
+    # Broadcast atualização
+    await manager.broadcast({
+        "type": "order_update",
+        "order_id": order.id,
+        "status": "confirmado",
+        "action": "confirm"
+    })
+
+    return order
+
+class CancelRequest(BaseModel):
+    motivo: str = "Cancelado pelo cliente"
+
+@app.post("/api/orders/{order_id}/cancel")
+async def cancel_order(order_id: int, data: CancelRequest, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Cancela pedido"""
+    service = OrderService(session)
+    order = service.cancel(order_id, data.motivo)
+    if not order:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado")
+
+    # Broadcast atualização
+    await manager.broadcast({
+        "type": "order_update",
+        "order_id": order.id,
+        "status": "cancelado",
+        "action": "cancel",
+        "motivo": data.motivo
+    })
+
+    return order
+
+# --- Deliveries ---
+@app.get("/api/deliveries/active")
+def list_active_deliveries(user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Lista entregas ativas"""
+    service = DeliveryService(session)
+    return service.list_active()
+
+class AssignDriverRequest(BaseModel):
+    driver_id: int
+
+@app.post("/api/orders/{order_id}/assign-driver")
+async def assign_driver_to_order(order_id: int, data: AssignDriverRequest, user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """Atribui entregador ao pedido"""
+    delivery_service = DeliveryService(session)
+    delivery = delivery_service.create_delivery(order_id, data.driver_id)
+    if not delivery:
+        raise HTTPException(status_code=400, detail="Erro ao criar entrega")
+
+    # Broadcast
+    await manager.broadcast({
+        "type": "order_update",
+        "order_id": order_id,
+        "status": "em_preparo",
+        "action": "assign_driver",
+        "driver_id": data.driver_id,
+        "driver_name": delivery.driver.nome if delivery.driver else None
+    })
+
+    return delivery
+
+@app.post("/api/deliveries/{delivery_id}/start")
+async def start_delivery(delivery_id: int, session: Session = Depends(get_session)):
+    """Inicia entrega (saiu para entrega)"""
+    service = DeliveryService(session)
+    delivery = service.start_delivery(delivery_id)
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Entrega não encontrada")
+
+    # Broadcast
+    await manager.broadcast({
+        "type": "order_update",
+        "order_id": delivery.order_id,
+        "status": "saiu_entrega",
+        "action": "start_delivery",
+        "delivery_id": delivery_id
+    })
+
+    return delivery
+
+@app.post("/api/deliveries/{delivery_id}/complete")
+async def complete_delivery(delivery_id: int, session: Session = Depends(get_session)):
+    """Finaliza entrega"""
+    service = DeliveryService(session)
+    delivery = service.complete_delivery(delivery_id)
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Entrega não encontrada")
+
+    # Broadcast
+    await manager.broadcast({
+        "type": "order_update",
+        "order_id": delivery.order_id,
+        "status": "entregue",
+        "action": "complete_delivery",
+        "delivery_id": delivery_id
+    })
+
+    return delivery
+
+class FailDeliveryRequest(BaseModel):
+    motivo: str
+
+@app.post("/api/deliveries/{delivery_id}/fail")
+async def fail_delivery(delivery_id: int, data: FailDeliveryRequest, session: Session = Depends(get_session)):
+    """Marca entrega como falha"""
+    service = DeliveryService(session)
+    delivery = service.fail_delivery(delivery_id, data.motivo)
+    if not delivery:
+        raise HTTPException(status_code=404, detail="Entrega não encontrada")
+
+    # Broadcast
+    await manager.broadcast({
+        "type": "order_update",
+        "order_id": delivery.order_id,
+        "status": "falha",
+        "action": "fail_delivery",
+        "delivery_id": delivery_id,
+        "motivo": data.motivo
+    })
+    return delivery
 
 
 # ===== STATIC FILES =====
