@@ -18,7 +18,6 @@ from typing import Optional, List
 import jwt
 from jwt import InvalidTokenError, DecodeError
 from passlib.context import CryptContext
-# Twilio removed - using Evolution API only
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import timezone
@@ -28,14 +27,12 @@ import random
 from backend.enhanced_chatbot_service import EnhancedClaudeChatbotService
 from backend.models import User, Conversation, Message, AuditLog, BotInteraction, BotContext, Usuario, brazilian_now
 from backend.n8n_service import n8n_service
-from backend.evolution_service import evolution_service
-from backend.waha_service import waha_service
 from backend.models.delivery_models import Customer, Product, Driver, Order, OrderItem, Delivery, OrderStatus, DriverStatus
 from backend.services import CustomerService, OrderService, DeliveryService, DriverService, ProductService
+from backend.waha_service import waha_service
 
 import httpx
 import os
-import asyncio
 import requests
 try:
     import anthropic
@@ -175,8 +172,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# WhatsApp integration via Evolution API (Twilio removed)
-print("WhatsApp integration: Using Evolution API")
+# WhatsApp integration via n8n webhooks
+print("WhatsApp integration: Using n8n webhooks")
 
 
 # Import models from models.py
@@ -429,51 +426,28 @@ def check_message_limits(session: Session, phone_number: str) -> dict:
     return {"can_send": True, "reason": "ok"}
 
 
-async def send_with_human_delay(phone_number: str, message: str):
-    """Send message with random delay to appear more human"""
-    min_delay = int(os.getenv("MIN_RESPONSE_DELAY", "3"))
-    max_delay = int(os.getenv("MAX_RESPONSE_DELAY", "8"))
-
-    # Random delay between min and max
-    delay = random.uniform(min_delay, max_delay)
-    safe_print(f"[DELAY] Waiting {delay:.1f}s before responding...")
-    await asyncio.sleep(delay)
-
-    # Send message
-    await evolution_service.send_text_message(phone_number, message)
-    # except UnicodeEncodeError:
-    #     # Fallback: encode and decode to remove problematic characters
-    #     safe_msg = str(msg).encode('ascii', 'ignore').decode('ascii')
-    #     print(safe_msg)
-
-# ngrok removed - using Evolution API webhook directly
-
-
-
-
-# Send WhatsApp message using Evolution API
 async def send_whatsapp_message(to_number: str, message: str):
     """
-    Send WhatsApp message using Evolution API
+    Send WhatsApp message via n8n workflow
+    Note: This is now handled by n8n, not directly by the API
     """
-
-    # WARMUP MODE - Prevent auto-sending during warmup period
     warmup_mode = os.getenv("WARMUP_MODE", "false").lower() == "true"
     if warmup_mode:
-        print(f"🛡️ WARMUP MODE: Skipping auto-send to {to_number} (warmup protection active)")
+        print(f"WARMUP MODE: Skipping auto-send to {to_number}")
         return None
 
-    # Use Evolution API
-    if evolution_service.enabled:
-        result = await evolution_service.send_text_message(to_number, message)
+    # Send via n8n if enabled
+    if n8n_service.enabled:
+        result = await n8n_service.trigger_chat_workflow(
+            message=message,
+            phone_number=to_number,
+            customer_name="Sistema"
+        )
         if result:
-            print(f"✅ Evolution API: Message sent to {to_number}")
+            print(f"n8n: Message queued for {to_number}")
             return result
-        else:
-            print(f"⚠️ Evolution API failed to send message")
-            return None
 
-    print("⚠️ Evolution API not enabled - WhatsApp features disabled")
+    print("n8n not enabled - WhatsApp message not sent")
     return None
 
 def get_least_busy_agent(session: Session):
@@ -843,311 +817,9 @@ async def query_ollama_bot(message: str, model: str = "mistral"):
   
 @app.post("/webhook/whatsapp")
 async def whatsapp_webhook(request: Request):
-    """Legacy WhatsApp webhook (deprecated - use /webhook/evolution instead)"""
-    return {"status": "deprecated", "message": "Use /webhook/evolution endpoint instead"}
+    """Legacy WhatsApp webhook (deprecated - use /webhook/n8n instead)"""
+    return {"status": "deprecated", "message": "Use /webhook/n8n endpoint instead"}
 
-@app.post("/webhook/whatsapp-legacy")
-async def whatsapp_webhook_legacy(request: Request):
-    """Legacy WhatsApp webhook for form data (deprecated)"""
-    try:
-        # Parse form data
-        form_data = await request.form()
-        from_number = form_data.get("From", "").replace("whatsapp:", "")
-        message_body = form_data.get("Body", "")
-        raw_profile_name = form_data.get("ProfileName")
-        
-        # Generate a better customer name
-        if raw_profile_name and raw_profile_name.lower() not in ["none", "null", ""]:
-            profile_name = raw_profile_name
-        else:
-            # Generate fallback name from phone number
-            if from_number:
-                # Extract last 4 digits for a friendly name
-                last_digits = from_number[-4:] if len(from_number) >= 4 else from_number
-                profile_name = f"Cliente {last_digits}"
-            else:
-                profile_name = "Cliente Desconhecido"
-
-        print(f"WEBHOOK DEBUG - Received:")
-        print(f"  From: {from_number}")
-        print(f"  Raw ProfileName: '{raw_profile_name}'")
-        print(f"  Final ProfileName: '{profile_name}'")
-        print(f"  Message: {message_body}")
-
-        if not from_number or not message_body:
-            return {"status": "error", "message": "Missing data"}
-
-        # Initialize enhanced chatbot service
-        with Session(engine) as session:
-            chatbot_service = EnhancedClaudeChatbotService(session)
-            
-            # Process message through enhanced chatbot
-            result = await chatbot_service.process_message(from_number, message_body, profile_name)
-            
-            should_escalate = result['should_escalate']
-            bot_response = result.get('bot_response')
-            bot_service = result.get('bot_service', 'unknown')
-            escalation_reason = result.get('escalation_reason')
-            
-            # Save bot interaction for analytics
-            if bot_response:
-                await _save_bot_interaction(
-                    session, from_number, message_body, bot_response, 
-                    profile_name, bot_service, should_escalate, escalation_reason
-                )
-                print(f"BOT ({bot_service}) responding: {bot_response}")
-            
-        # Handle escalation to human agent
-        if should_escalate:
-            print(f"ESCALATING conversation for {from_number} to human agent (reason: {escalation_reason})")
-            
-            # Get escalation message from chatbot service
-            with Session(engine) as session:
-                chatbot_service = EnhancedClaudeChatbotService(session)
-                escalation_message = chatbot_service.get_escalation_message(escalation_reason, profile_name)
-            
-            # Create or find existing conversation with full history preservation
-            with Session(engine) as session:
-                # Check if conversation already exists (including any bot-only conversations)
-                existing_conversation = session.exec(
-                    select(Conversation).where(
-                        Conversation.customer_number == from_number,
-                        Conversation.status.in_(["pending", "active"])
-                    )
-                ).first()
-
-                if existing_conversation:
-                    # Use existing conversation and escalate it
-                    conversation = existing_conversation
-                    agent = get_least_busy_agent(session)
-                    
-                    # Update conversation for escalation
-                    conversation.status = "active"  # Escalate to active status
-                    if agent and not conversation.assigned_to:
-                        conversation.assigned_to = agent.id
-                        print(f"Escalating existing conversation {conversation.id} to agent {agent.name}")
-                    else:
-                        print(f"Escalating existing conversation {conversation.id} (already assigned)")
-                        
-                    session.add(conversation)
-                    session.commit()
-                else:
-                    # Create new conversation for escalation
-                    agent = get_least_busy_agent(session)
-                    system_user = session.exec(select(User).where(User.email == "system@internal")).first()
-                    if not system_user:
-                        system_user = User(
-                            email="system@internal",
-                            name="System Bot",
-                            password_hash=hash_password("system_internal_password"),
-                            role="system"
-                        )
-                        session.add(system_user)
-                        session.commit()
-                        session.refresh(system_user)
-                    
-                    conversation = Conversation(
-                        customer_number=from_number,
-                        name=profile_name,
-                        assigned_to=agent.id if agent else None,
-                        created_by=agent.id if agent else system_user.id,
-                        status="active",  # Start as active since it's escalated
-                    )
-                    session.add(conversation)
-                    session.commit()
-                    session.refresh(conversation)
-                    
-                    print(f"=== ESCALATION CONVERSATION DEBUG ===")
-                    print(f"Created NEW escalated conversation {conversation.id}, assigned to agent {agent.name if agent else 'None'}")
-                    print(f"Escalation input: number='{from_number}', name='{profile_name}'")
-                    print(f"Stored in DB: id={conversation.id}, customer_number='{conversation.customer_number}', name='{conversation.name}'")
-                    print(f"=== END ESCALATION CONVERSATION DEBUG ===")
-
-                # Save current customer message (the escalation request)
-                customer_msg = Message(
-                    conversation_id=conversation.id,
-                    sender="customer",
-                    message_type="customer",
-                    content=message_body
-                )
-                session.add(customer_msg)
-                session.commit()
-
-                # Save bot escalation message
-                if escalation_message:
-                    bot_msg = Message(
-                        conversation_id=conversation.id,
-                        sender="bot",
-                        message_type="bot",
-                        content=escalation_message,
-                        bot_service="escalation"
-                    )
-                    session.add(bot_msg)
-                    session.commit()
-
-                    # Broadcast bot message to WebSocket clients
-                    try:
-                        asyncio.create_task(manager.broadcast({
-                            "id": bot_msg.id,
-                            "conversation_id": conversation.id,
-                            "sender": "bot",
-                            "message_type": "bot",
-                            "message": escalation_message,
-                            "content": escalation_message,
-                            "bot_service": "escalation",
-                            "timestamp": bot_msg.timestamp.isoformat()
-                        }))
-                    except Exception as e:
-                        print(f"Error broadcasting bot message: {e}")
-
-                # Notify agents via WebSocket with enhanced info
-                try:
-                    # Count previous messages in this conversation for context
-                    message_count = session.exec(
-                        select(Message).where(Message.conversation_id == conversation.id)
-                    ).count()
-                    
-                    escalation_data = {
-                        "type": "new_escalation",
-                        "id": customer_msg.id,
-                        "conversation_id": conversation.id,
-                        "sender": "customer", 
-                        "message_type": "customer",
-                        "message": message_body,
-                        "customer_name": profile_name,
-                        "customer_number": from_number,
-                        "timestamp": customer_msg.timestamp.isoformat(),
-                        "escalation_reason": escalation_reason,
-                        "bot_service": bot_service,
-                        "message_history_count": message_count,
-                        "conversation_status": conversation.status,
-                        "assigned_agent": conversation.assigned_to
-                    }
-                    
-                    asyncio.create_task(manager.broadcast(escalation_data))
-                    print(f"Broadcasted escalation notification with {message_count} previous messages")
-                    
-                except Exception as e:
-                    print(f"Error notifying agents: {e}")
-            
-            # Send escalation response
-            try:
-                await send_whatsapp_message(from_number, escalation_message)
-            except Exception as e:
-                print(f"WhatsApp send failed: {e}")
-            
-            return {"status": "escalated_to_agent", "response": escalation_message, "reason": escalation_reason}
-        
-        else:
-            # Check if there's an existing conversation for this number
-            with Session(engine) as session:
-                existing_conversation = session.exec(
-                    select(Conversation).where(Conversation.customer_number == from_number)
-                    .where(Conversation.status.in_(["pending", "active"]))
-                ).first()
-                
-                # Create conversation if none exists (for bot-only interactions)
-                if not existing_conversation:
-                    system_user = session.exec(select(User).where(User.email == "system@internal")).first()
-                    if not system_user:
-                        # Create system user if it doesn't exist
-                        system_user = User(
-                            email="system@internal",
-                            name="System Bot",
-                            password_hash=hash_password("system_internal_password"),
-                            role="system"
-                        )
-                        session.add(system_user)
-                        session.commit()
-                        session.refresh(system_user)
-                    
-                    # Create new conversation for bot interaction
-                    existing_conversation = Conversation(
-                        customer_number=from_number,
-                        name=profile_name,
-                        created_by=system_user.id,
-                        status="pending"  # Keep as pending so agents can see it
-                    )
-                    session.add(existing_conversation)
-                    session.commit()
-                    session.refresh(existing_conversation)
-                    
-                    print(f"=== CONVERSATION CREATION DEBUG ===")
-                    print(f"Created new conversation {existing_conversation.id} for bot interaction")
-                    print(f"Input values: number='{from_number}', name='{profile_name}'")
-                    print(f"Stored in DB: id={existing_conversation.id}, customer_number='{existing_conversation.customer_number}', name='{existing_conversation.name}'")
-                    print(f"Name is None: {existing_conversation.name is None}")
-                    print(f"Name is empty: {existing_conversation.name == ''}")
-                    print(f"=== END CONVERSATION DEBUG ===")
-                else:
-                    print(f"=== USING EXISTING CONVERSATION ===")
-                    print(f"Found existing conversation {existing_conversation.id}")
-                    print(f"Existing name: '{existing_conversation.name}', number: '{existing_conversation.customer_number}'")
-                    print(f"=== END EXISTING CONVERSATION DEBUG ===")
-                
-                # Save customer message first
-                customer_msg = Message(
-                    conversation_id=existing_conversation.id,
-                    sender="customer",
-                    message_type="customer",
-                    content=message_body
-                )
-                session.add(customer_msg)
-                session.commit()
-                
-                # Save bot response to conversation
-                bot_msg = Message(
-                    conversation_id=existing_conversation.id,
-                    sender="bot",
-                    message_type="bot", 
-                    content=bot_response,
-                    bot_service=bot_service
-                )
-                session.add(bot_msg)
-                session.commit()
-                
-                # Broadcast customer message to WebSocket clients
-                try:
-                    asyncio.create_task(manager.broadcast({
-                        "id": customer_msg.id,
-                        "conversation_id": existing_conversation.id,
-                        "sender": "customer",
-                        "message_type": "customer",
-                        "message": message_body,
-                        "content": message_body,
-                        "customer_name": profile_name,
-                        "customer_number": from_number,
-                        "timestamp": customer_msg.timestamp.isoformat()
-                    }))
-                except Exception as e:
-                    print(f"Error broadcasting customer message: {e}")
-                
-                # Broadcast bot message to WebSocket clients
-                try:
-                    asyncio.create_task(manager.broadcast({
-                        "id": bot_msg.id,
-                        "conversation_id": existing_conversation.id,
-                        "sender": "bot",
-                        "message_type": "bot",
-                        "message": bot_response,
-                        "content": bot_response,
-                        "bot_service": bot_service,
-                        "timestamp": bot_msg.timestamp.isoformat()
-                    }))
-                except Exception as e:
-                    print(f"Error broadcasting bot message: {e}")
-            
-            # Send bot response
-            try:
-                await send_whatsapp_message(from_number, bot_response)
-            except Exception as e:
-                print(f"WhatsApp send failed: {e}")
-            
-            return {"status": "bot_response", "response": bot_response, "bot_service": bot_service}
-
-    except Exception as e:
-        print(f"ERROR in webhook: {e}")
-        return {"status": "error", "message": str(e)}
 
 # n8n Authentication Helper
 def verify_n8n_webhook(request: Request) -> bool:
@@ -1482,320 +1154,6 @@ async def n8n_webhook(request: Request):
             }
         }
 
-# Evolution API Webhook
-@app.post("/webhook/evolution")
-async def evolution_webhook(request: Request):
-    """
-    Webhook to receive messages from Evolution API
-    Evolution API will send messages to this endpoint
-    """
-    try:
-        data = await request.json()
-
-        # Debug log - log ALL events
-        event_type = data.get("event", "unknown")
-        data_keys = list(data.keys())
-        print(f"[WEBHOOK] Event: {event_type}, Keys: {data_keys}")
-
-        # Log full data for debugging (remove after fix)
-        import json as json_mod
-        print(f"[WEBHOOK] Full data: {json_mod.dumps(data, default=str)[:500]}")
-
-        # Extract event type
-        event = data.get("event")
-        instance = data.get("instance")
-
-        # Handle incoming messages
-        if event == "messages.upsert":
-            message_data = data.get("data", {})
-
-            # Get message metadata
-            key = message_data.get("key", {})
-            message = message_data.get("message", {})
-            pushName = message_data.get("pushName", "Cliente")
-
-            # Ignore messages from us (TEMPORARILY DISABLED FOR TESTING)
-            # from_me = key.get("fromMe", False)
-            # if from_me:
-            #     print("[Evolution] Ignoring message from us")
-            #     return {"status": "ignored", "reason": "message from us"}
-
-            # Extract phone number
-            remote_jid = key.get("remoteJid", "")
-            phone_number = remote_jid.replace("@s.whatsapp.net", "")
-
-            # Check if number is authorized
-            authorized_numbers = os.getenv("AUTHORIZED_NUMBERS", "").split(",")
-            authorized_numbers = [n.strip() for n in authorized_numbers if n.strip()]
-
-            if authorized_numbers and phone_number not in authorized_numbers:
-                print(f"[WEBHOOK] Unauthorized: {phone_number}")
-                return {"status": "ignored", "reason": "unauthorized number"}
-
-            # Get message text
-            conversation = message.get("conversation")
-            extended_text = message.get("extendedTextMessage", {}).get("text")
-            message_text = conversation or extended_text
-
-            print(f"[WEBHOOK] From: {phone_number}, Text: {message_text[:30] if message_text else 'None'}...")
-
-            if not message_text:
-                print("[WEBHOOK] No text content")
-                return {"status": "ignored", "reason": "no text content"}
-
-            safe_print(f"[Evolution] Message from {phone_number} ({pushName}): {message_text}")
-
-            # Process through chatbot (reuse existing logic from Twilio webhook)
-            with Session(engine) as session:
-                # Check business hours
-                if not is_within_business_hours():
-                    print("[WEBHOOK] Outside business hours")
-                    return {"status": "ignored", "reason": "outside business hours"}
-
-                # Check message limits
-                limit_check = check_message_limits(session, phone_number)
-                if not limit_check["can_send"]:
-                    print(f"[WEBHOOK] Limit reached: {limit_check['reason']}")
-                    return {"status": "ignored", "reason": limit_check["reason"]}
-
-                print("[WEBHOOK] Processing with chatbot...")
-                chatbot_service = EnhancedClaudeChatbotService(session)
-
-                # Process message through enhanced chatbot
-                result = await chatbot_service.process_message(phone_number, message_text, pushName)
-
-                should_escalate = result['should_escalate']
-                bot_response = result.get('bot_response')
-                bot_service = result.get('bot_service', 'unknown')
-                escalation_reason = result.get('escalation_reason')
-
-                # Save bot interaction for analytics
-                if bot_response:
-                    await _save_bot_interaction(
-                        session, phone_number, message_text, bot_response,
-                        pushName, f"{bot_service}_evolution", should_escalate, escalation_reason
-                    )
-                    safe_print(f"[BOT] ({bot_service}) responding: {bot_response}")
-
-            # Send response via Evolution API with human-like delay
-            if bot_response:
-                await send_with_human_delay(phone_number, bot_response)
-
-            # Handle escalation to human agent
-            if should_escalate:
-                safe_print(f"[ESCALATION] Escalating conversation for {phone_number} to human agent")
-
-                # Get escalation message
-                with Session(engine) as session:
-                    chatbot_service = EnhancedClaudeChatbotService(session)
-                    escalation_message = chatbot_service.get_escalation_message(escalation_reason, pushName)
-
-                    # Create or find existing conversation
-                    existing_conversation = session.exec(
-                        select(Conversation).where(
-                            Conversation.customer_number == phone_number,
-                            Conversation.status.in_(["pending", "active"])
-                        )
-                    ).first()
-
-                    if existing_conversation:
-                        conversation = existing_conversation
-                        agent = get_least_busy_agent(session)
-                        conversation.status = "active"
-                        if agent and not conversation.assigned_to:
-                            conversation.assigned_to = agent.id
-                        session.add(conversation)
-                        session.commit()
-                    else:
-                        # Create new conversation
-                        agent = get_least_busy_agent(session)
-                        system_user = session.exec(select(User).where(User.email == "system@internal")).first()
-
-                        if not system_user:
-                            system_user = User(
-                                email="system@internal",
-                                name="System Bot",
-                                password_hash=hash_password("system_internal_password"),
-                                role="system"
-                            )
-                            session.add(system_user)
-                            session.commit()
-                            session.refresh(system_user)
-
-                        conversation = Conversation(
-                            customer_number=phone_number,
-                            name=pushName,
-                            assigned_to=agent.id if agent else None,
-                            created_by=agent.id if agent else system_user.id,
-                            status="active"
-                        )
-                        session.add(conversation)
-                        session.commit()
-                        session.refresh(conversation)
-
-                    # Save customer message
-                    customer_msg = Message(
-                        conversation_id=conversation.id,
-                        sender="customer",
-                        message_type="customer",
-                        content=message_text
-                    )
-                    session.add(customer_msg)
-                    session.commit()
-
-                    # Save bot escalation message
-                    if escalation_message:
-                        bot_msg = Message(
-                            conversation_id=conversation.id,
-                            sender="bot",
-                            message_type="bot",
-                            content=escalation_message,
-                            bot_service="evolution_escalation"
-                        )
-                        session.add(bot_msg)
-                        session.commit()
-
-                        # Broadcast to WebSocket clients
-                        try:
-                            asyncio.create_task(manager.broadcast({
-                                "id": bot_msg.id,
-                                "conversation_id": conversation.id,
-                                "sender": "bot",
-                                "message_type": "bot",
-                                "message": escalation_message,
-                                "timestamp": bot_msg.timestamp.isoformat()
-                            }))
-                        except Exception as e:
-                            print(f"Error broadcasting: {e}")
-
-                    # Notify agents via WebSocket
-                    try:
-                        escalation_data = {
-                            "type": "new_escalation",
-                            "source": "evolution_api",
-                            "id": customer_msg.id,
-                            "conversation_id": conversation.id,
-                            "sender": "customer",
-                            "message": message_text,
-                            "customer_name": pushName,
-                            "customer_number": phone_number,
-                            "escalation_reason": escalation_reason,
-                            "timestamp": customer_msg.timestamp.isoformat()
-                        }
-                        asyncio.create_task(manager.broadcast(escalation_data))
-                    except Exception as e:
-                        print(f"Error notifying agents: {e}")
-
-                # Send escalation response
-                if escalation_message:
-                    await evolution_service.send_text_message(phone_number, escalation_message)
-
-                return {
-                    "status": "escalated_to_agent",
-                    "response": escalation_message,
-                    "reason": escalation_reason
-                }
-            else:
-                # Bot handled the conversation
-                with Session(engine) as session:
-                    # Check if conversation exists
-                    existing_conversation = session.exec(
-                        select(Conversation).where(Conversation.customer_number == phone_number)
-                        .where(Conversation.status.in_(["pending", "active"]))
-                    ).first()
-
-                    # Create conversation if none exists (for bot-only interactions)
-                    if not existing_conversation:
-                        system_user = session.exec(select(User).where(User.email == "system@internal")).first()
-                        if not system_user:
-                            system_user = User(
-                                email="system@internal",
-                                name="System Bot",
-                                password_hash=hash_password("system_internal_password"),
-                                role="system"
-                            )
-                            session.add(system_user)
-                            session.commit()
-                            session.refresh(system_user)
-
-                        existing_conversation = Conversation(
-                            customer_number=phone_number,
-                            name=pushName,
-                            created_by=system_user.id,
-                            status="pending"
-                        )
-                        session.add(existing_conversation)
-                        session.commit()
-                        session.refresh(existing_conversation)
-
-                    # Save customer message
-                    customer_msg = Message(
-                        conversation_id=existing_conversation.id,
-                        sender="customer",
-                        message_type="customer",
-                        content=message_text
-                    )
-                    session.add(customer_msg)
-                    session.commit()
-
-                    # Save bot response
-                    bot_msg = Message(
-                        conversation_id=existing_conversation.id,
-                        sender="bot",
-                        message_type="bot",
-                        content=bot_response,
-                        bot_service=f"{bot_service}_evolution"
-                    )
-                    session.add(bot_msg)
-                    session.commit()
-
-                    # Broadcast to WebSocket clients
-                    try:
-                        asyncio.create_task(manager.broadcast({
-                            "id": customer_msg.id,
-                            "conversation_id": existing_conversation.id,
-                            "sender": "customer",
-                            "message_type": "customer",
-                            "message": message_text,
-                            "timestamp": customer_msg.timestamp.isoformat()
-                        }))
-
-                        asyncio.create_task(manager.broadcast({
-                            "id": bot_msg.id,
-                            "conversation_id": existing_conversation.id,
-                            "sender": "bot",
-                            "message_type": "bot",
-                            "message": bot_response,
-                            "timestamp": bot_msg.timestamp.isoformat()
-                        }))
-                    except Exception as e:
-                        print(f"Error broadcasting messages: {e}")
-
-                return {
-                    "status": "bot_response",
-                    "response": bot_response,
-                    "bot_service": bot_service
-                }
-
-        # Handle connection updates
-        elif event == "connection.update":
-            connection_data = data.get("data", {})
-            state = connection_data.get("state", "unknown")
-            safe_print(f"[Evolution] Connection update - {state}")
-            return {"status": "ok", "event": event}
-
-        # Handle QR code updates
-        elif event == "qrcode.updated":
-            qr_data = data.get("data", {})
-            safe_print("[Evolution] QR Code updated")
-            return {"status": "ok", "event": event}
-
-        return {"status": "ok", "event": event}
-
-    except Exception as e:
-        safe_print(f"[Evolution] Webhook error: {e}")
-        # Don't print traceback to avoid encoding issues
-        return {"status": "error", "message": str(e)}
 
 # Test endpoint for bot without WhatsApp
 @app.post("/test-bot")
@@ -2400,108 +1758,6 @@ async def send_to_n8n_chat(request: Request, user: User = Depends(get_current_us
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ===== EVOLUTION API MANAGEMENT ENDPOINTS =====
-
-@app.get("/api/evolution/status")
-async def get_evolution_status(user: User = Depends(get_current_user)):
-    """Check Evolution API instance status and connection"""
-    if user.role not in ["admin", "agent"]:
-        raise HTTPException(status_code=403, detail="Acesso negado")
-
-    try:
-        status = await evolution_service.get_instance_status()
-        return {
-            "enabled": evolution_service.enabled,
-            "instance_name": evolution_service.instance_name,
-            "base_url": evolution_service.base_url,
-            "connection_status": status
-        }
-    except Exception as e:
-        return {"error": str(e), "enabled": False}
-
-
-@app.post("/api/evolution/create-instance")
-async def create_evolution_instance(user: User = Depends(get_current_user)):
-    """Create new WhatsApp instance"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        result = await evolution_service.create_instance()
-        if result:
-            return {"status": "success", "data": result}
-        else:
-            return {"status": "error", "message": "Failed to create instance"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.get("/api/evolution/qrcode")
-async def get_evolution_qrcode(user: User = Depends(get_current_user)):
-    """Get QR code for WhatsApp authentication"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        qr_data = await evolution_service.get_qrcode()
-        if qr_data:
-            return {
-                "status": "success",
-                "qrcode": qr_data,
-                "instruction": "Scan this QR code with WhatsApp on your phone"
-            }
-        else:
-            return {"status": "error", "message": "Failed to get QR code"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.post("/api/evolution/configure-webhook")
-async def configure_evolution_webhook(user: User = Depends(get_current_user)):
-    """Configure Evolution API webhook for receiving messages"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        webhook_url = os.getenv("EVOLUTION_WEBHOOK_URL", "http://localhost:8000/webhook/evolution")
-        result = await evolution_service.set_webhook(webhook_url)
-
-        if result:
-            return {
-                "status": "success",
-                "webhook_url": webhook_url,
-                "data": result
-            }
-        else:
-            return {"status": "error", "message": "Failed to configure webhook"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.post("/api/evolution/logout")
-async def evolution_logout(user: User = Depends(get_current_user)):
-    """Logout from WhatsApp instance"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        result = await evolution_service.logout()
-        return {"status": "success", "data": result}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.delete("/api/evolution/delete-instance")
-async def delete_evolution_instance(user: User = Depends(get_current_user)):
-    """Delete WhatsApp instance"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        result = await evolution_service.delete_instance()
-        return {"status": "success", "data": result}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 @app.get("/dashboard/statistics")
 async def get_dashboard_statistics(current_user: User = Depends(get_current_user)):
@@ -2605,172 +1861,6 @@ async def get_dashboard_statistics(current_user: User = Depends(get_current_user
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-# ===== WAHA (WhatsApp HTTP API) ENDPOINTS =====
-
-@app.get("/api/waha/status")
-async def get_waha_status(user: User = Depends(get_current_user)):
-    """Check WAHA instance status"""
-    if user.role not in ["admin", "agent"]:
-        raise HTTPException(status_code=403, detail="Acesso negado")
-
-    try:
-        status = await waha_service.get_session_status()
-        return {
-            "enabled": waha_service.enabled,
-            "session_name": waha_service.session_name,
-            "base_url": waha_service.base_url,
-            "status": status
-        }
-    except Exception as e:
-        return {"error": str(e), "enabled": False}
-
-
-@app.post("/api/waha/start-session")
-async def start_waha_session(user: User = Depends(get_current_user)):
-    """Start WAHA WhatsApp session"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        result = await waha_service.start_session()
-        if result:
-            return {"status": "success", "data": result}
-        return {"status": "error", "message": "Failed to start session"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.post("/api/waha/stop-session")
-async def stop_waha_session(user: User = Depends(get_current_user)):
-    """Stop WAHA WhatsApp session"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        result = await waha_service.stop_session()
-        return {"status": "success", "data": result}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.get("/api/waha/qrcode")
-async def get_waha_qrcode(user: User = Depends(get_current_user)):
-    """Get QR code for WAHA authentication"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        qr_data = await waha_service.get_qrcode()
-        if qr_data:
-            return {"status": "success", "qrcode": qr_data}
-        return {"status": "error", "message": "Failed to get QR code"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.post("/api/waha/logout")
-async def waha_logout(user: User = Depends(get_current_user)):
-    """Logout from WAHA WhatsApp"""
-    if user.role != "admin":
-        raise HTTPException(status_code=403, detail="Apenas admins")
-
-    try:
-        result = await waha_service.logout()
-        return {"status": "success", "data": result}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.post("/api/waha/send-message")
-async def waha_send_message(
-    to_number: str,
-    message: str,
-    user: User = Depends(get_current_user)
-):
-    """Send message via WAHA"""
-    if user.role not in ["admin", "agent"]:
-        raise HTTPException(status_code=403, detail="Acesso negado")
-
-    try:
-        result = await waha_service.send_text_message(to_number, message)
-        if result:
-            return {"status": "success", "data": result}
-        return {"status": "error", "message": "Failed to send message"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-@app.post("/webhook/waha")
-async def waha_webhook(request: Request):
-    """
-    Webhook to receive messages from WAHA
-    WAHA sends messages to this endpoint
-    """
-    try:
-        data = await request.json()
-
-        print(f"WAHA webhook received: {data.get('event', 'unknown')}")
-
-        event = data.get("event")
-
-        # Handle incoming messages
-        if event in ["message", "message.any"]:
-            payload = data.get("payload", {})
-
-            # Ignore messages from us
-            from_me = payload.get("fromMe", False)
-            if from_me:
-                print("Ignoring message from us")
-                return {"status": "ignored", "reason": "message from us"}
-
-            # Extract message info
-            chat_id = payload.get("from", "")
-            phone_number = chat_id.replace("@c.us", "").replace("@s.whatsapp.net", "")
-            message_body = payload.get("body", "")
-            push_name = payload.get("notifyName", "Cliente")
-
-            if not message_body:
-                print("Ignoring non-text message")
-                return {"status": "ignored", "reason": "no text content"}
-
-            print(f"Message from {phone_number} ({push_name}): {message_body}")
-
-            # Process through chatbot
-            with Session(engine) as session:
-                chatbot_service = EnhancedClaudeChatbotService(session)
-                result = await chatbot_service.process_message(phone_number, message_body, push_name)
-
-                bot_response = result.get('bot_response')
-                bot_service = result.get('bot_service', 'unknown')
-                should_escalate = result['should_escalate']
-
-                if bot_response:
-                    print(f"BOT ({bot_service}) responding: {bot_response}")
-
-            # Send response via WAHA
-            if bot_response:
-                await waha_service.send_text_message(phone_number, bot_response)
-
-            return {
-                "status": "processed",
-                "response": bot_response,
-                "bot_service": bot_service,
-                "escalated": should_escalate
-            }
-
-        # Handle session status changes
-        elif event == "session.status":
-            status = data.get("payload", {}).get("status")
-            print(f"WAHA session status: {status}")
-            return {"status": "ok", "event": event}
-
-        return {"status": "ok", "event": event}
-
-    except Exception as e:
-        print(f"WAHA webhook error: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error", "message": str(e)}
 
 
 # ===== DELIVERY SYSTEM ENDPOINTS =====
@@ -3099,6 +2189,174 @@ async def fail_delivery(delivery_id: int, data: FailDeliveryRequest, session: Se
         "motivo": data.motivo
     })
     return delivery
+
+
+# ===== WAHA WHATSAPP API ENDPOINTS =====
+
+@app.get("/api/waha/status")
+async def waha_status():
+    """Get WAHA session status"""
+    status = await waha_service.get_session_status()
+    return {"enabled": waha_service.enabled, "status": status}
+
+@app.post("/api/waha/start-session")
+async def waha_start_session():
+    """Start WAHA WhatsApp session"""
+    if not waha_service.enabled:
+        raise HTTPException(status_code=400, detail="WAHA not enabled")
+    result = await waha_service.start_session()
+    if result:
+        return {"success": True, "result": result}
+    raise HTTPException(status_code=500, detail="Failed to start session")
+
+@app.post("/api/waha/stop-session")
+async def waha_stop_session():
+    """Stop WAHA WhatsApp session"""
+    if not waha_service.enabled:
+        raise HTTPException(status_code=400, detail="WAHA not enabled")
+    result = await waha_service.stop_session()
+    return {"success": True, "result": result}
+
+@app.get("/api/waha/qrcode")
+async def waha_qrcode():
+    """Get WAHA QR code for authentication"""
+    if not waha_service.enabled:
+        raise HTTPException(status_code=400, detail="WAHA not enabled")
+    result = await waha_service.get_qrcode()
+    if result:
+        return result
+    raise HTTPException(status_code=404, detail="QR code not available")
+
+@app.post("/api/waha/logout")
+async def waha_logout():
+    """Logout from WAHA WhatsApp"""
+    if not waha_service.enabled:
+        raise HTTPException(status_code=400, detail="WAHA not enabled")
+    result = await waha_service.logout()
+    return {"success": True, "result": result}
+
+class WAHASendMessageRequest(BaseModel):
+    to_number: str
+    message: str
+
+@app.post("/api/waha/send-message")
+async def waha_send_message(data: WAHASendMessageRequest):
+    """Send message via WAHA WhatsApp"""
+    if not waha_service.enabled:
+        raise HTTPException(status_code=400, detail="WAHA not enabled")
+    result = await waha_service.send_text_message(data.to_number, data.message)
+    if result:
+        return {"success": True, "result": result}
+    raise HTTPException(status_code=500, detail="Failed to send message")
+
+
+# ===== WAHA WEBHOOK =====
+
+@app.post("/webhook/waha")
+async def waha_webhook(request: Request):
+    """
+    Webhook para receber mensagens do WAHA
+    """
+    try:
+        data = await request.json()
+        print(f"WAHA Webhook received: {data}")
+
+        event_type = data.get("event")
+
+        # Handle incoming message
+        if event_type == "message":
+            payload = data.get("payload", {})
+            from_number = payload.get("from", "")
+            message_body = payload.get("body", "")
+            is_from_me = payload.get("fromMe", False)
+
+            # Skip messages sent by us
+            if is_from_me:
+                return {"status": "ignored", "reason": "message from self"}
+
+            # Clean phone number (remove @c.us)
+            phone = from_number.replace("@c.us", "")
+
+            print(f"WAHA Message from {phone}: {message_body}")
+
+            # Process with chatbot
+            with Session(engine) as session:
+                # Find or create conversation
+                statement = select(Conversation).where(Conversation.phone == phone)
+                conversation = session.exec(statement).first()
+
+                if not conversation:
+                    conversation = Conversation(
+                        phone=phone,
+                        customer_name=f"WhatsApp {phone}",
+                        source="waha",
+                        status="new"
+                    )
+                    session.add(conversation)
+                    session.commit()
+                    session.refresh(conversation)
+
+                # Save incoming message
+                incoming_msg = Message(
+                    conversation_id=conversation.id,
+                    content=message_body,
+                    sender="customer",
+                    message_type="waha"
+                )
+                session.add(incoming_msg)
+                session.commit()
+
+                # Process with chatbot if bot is active
+                if conversation.bot_enabled:
+                    chatbot = EnhancedClaudeChatbotService()
+                    bot_response = await chatbot.process_message(
+                        message=message_body,
+                        conversation_id=conversation.id,
+                        phone=phone,
+                        session=session
+                    )
+
+                    if bot_response and bot_response.get("response"):
+                        response_text = bot_response["response"]
+
+                        # Save bot response
+                        bot_msg = Message(
+                            conversation_id=conversation.id,
+                            content=response_text,
+                            sender="bot",
+                            message_type="waha",
+                            bot_service=bot_response.get("service", "chatbot")
+                        )
+                        session.add(bot_msg)
+                        session.commit()
+
+                        # Send via WAHA
+                        await waha_service.send_text_message(phone, response_text)
+
+                        # Check if should escalate
+                        if bot_response.get("should_escalate"):
+                            conversation.bot_enabled = False
+                            conversation.status = "waiting"
+                            session.commit()
+
+                # Broadcast update
+                await manager.broadcast({
+                    "type": "new_message",
+                    "conversation_id": conversation.id,
+                    "phone": phone,
+                    "message": message_body,
+                    "source": "waha"
+                })
+
+            return {"status": "processed"}
+
+        return {"status": "ignored", "reason": f"unhandled event: {event_type}"}
+
+    except Exception as e:
+        print(f"WAHA Webhook error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 
 # ===== STATIC FILES =====
