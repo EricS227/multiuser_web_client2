@@ -618,15 +618,16 @@
                     <thead>
                         <tr>
                             <th>Nome</th>
-                            <th>Categoria</th>
-                            <th>Preço c/ Troca</th>
-                            <th>Preço s/ Troca</th>
+                            <th>Peso</th>
+                            <th>Preço</th>
+                            <th>Preço Troca</th>
+                            <th>Estoque</th>
                             <th>Status</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody id="products-table">
-                        <tr><td colspan="6">Carregando...</td></tr>
+                        <tr><td colspan="7">Carregando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -766,28 +767,32 @@
             <form onsubmit="saveProduct(event)">
                 <input type="hidden" id="product-id">
                 <div class="form-group">
-                    <label>Nome</label>
-                    <input type="text" id="product-nome" required>
+                    <label>Nome (ex: P13, P20, P45)</label>
+                    <input type="text" id="product-nome" placeholder="P13" required>
                 </div>
                 <div class="form-group">
                     <label>Descrição</label>
-                    <input type="text" id="product-descricao">
+                    <input type="text" id="product-descricao" placeholder="Botijão 13kg">
                 </div>
                 <div class="form-group">
-                    <label>Categoria</label>
-                    <select id="product-categoria">
-                        <option value="gas">Gás</option>
-                        <option value="agua">Água</option>
-                        <option value="acessorio">Acessório</option>
-                    </select>
+                    <label>Peso (kg)</label>
+                    <input type="number" id="product-peso" step="0.1" value="13" required>
                 </div>
                 <div class="form-group">
-                    <label>Preço (com troca)</label>
+                    <label>Preço (R$)</label>
                     <input type="number" id="product-preco" step="0.01" required>
                 </div>
                 <div class="form-group">
-                    <label>Preço (sem troca)</label>
-                    <input type="number" id="product-preco-sem-troca" step="0.01">
+                    <label>Preço com Troca (R$)</label>
+                    <input type="number" id="product-preco-troca" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label>Estoque Atual</label>
+                    <input type="number" id="product-estoque" value="0">
+                </div>
+                <div class="form-group">
+                    <label>Estoque Mínimo (alerta)</label>
+                    <input type="number" id="product-estoque-minimo" value="10">
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
                     <button type="button" class="btn" style="background: #ccc;" onclick="closeModal('product-modal')">Cancelar</button>
@@ -1394,7 +1399,27 @@
         }
 
         async function exportCustomersCSV() {
-            window.open(`${API_URL}/api/reports/export/customers?token=${token}`, '_blank');
+            try {
+                const res = await fetch(`${API_URL}/api/reports/export/customers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'clientes.csv';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    showToast('CSV exportado!', 'success');
+                } else {
+                    showToast('Erro ao exportar CSV', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao exportar CSV', 'error');
+            }
         }
 
         // ===== PRODUTOS =====
@@ -1417,16 +1442,19 @@
         function renderProductsTable(products) {
             const tbody = document.getElementById('products-table');
             if (products.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6">Nenhum produto cadastrado</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="7">Nenhum produto cadastrado</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = products.map(p => `
+            tbody.innerHTML = products.map(p => {
+                const estoqueClass = (p.estoque_atual || 0) <= (p.estoque_minimo || 10) ? 'badge-danger' : 'badge-success';
+                return `
                 <tr>
-                    <td><strong>${p.nome}</strong></td>
-                    <td><span class="badge badge-info">${p.categoria || 'gas'}</span></td>
+                    <td><strong>${p.nome}</strong><br><small style="color:#666">${p.descricao || ''}</small></td>
+                    <td>${p.peso_kg || 0} kg</td>
                     <td>R$ ${(p.preco || 0).toFixed(2)}</td>
-                    <td>R$ ${(p.preco_sem_troca || 0).toFixed(2)}</td>
+                    <td>${p.preco_troca ? 'R$ ' + p.preco_troca.toFixed(2) : '-'}</td>
+                    <td><span class="badge ${estoqueClass}">${p.estoque_atual || 0}</span></td>
                     <td>
                         <span class="badge ${p.ativo !== false ? 'badge-success' : 'badge-danger'}">
                             ${p.ativo !== false ? 'Ativo' : 'Inativo'}
@@ -1436,7 +1464,7 @@
                         <button class="btn btn-sm btn-primary" onclick="editProduct(${p.id})">Editar</button>
                     </td>
                 </tr>
-            `).join('');
+            `}).join('');
         }
 
         function openProductModal() {
@@ -1444,9 +1472,11 @@
             document.getElementById('product-id').value = '';
             document.getElementById('product-nome').value = '';
             document.getElementById('product-descricao').value = '';
-            document.getElementById('product-categoria').value = 'gas';
+            document.getElementById('product-peso').value = '13';
             document.getElementById('product-preco').value = '';
-            document.getElementById('product-preco-sem-troca').value = '';
+            document.getElementById('product-preco-troca').value = '';
+            document.getElementById('product-estoque').value = '0';
+            document.getElementById('product-estoque-minimo').value = '10';
             document.getElementById('product-modal').classList.add('active');
         }
 
@@ -1458,9 +1488,11 @@
             document.getElementById('product-id').value = product.id;
             document.getElementById('product-nome').value = product.nome;
             document.getElementById('product-descricao').value = product.descricao || '';
-            document.getElementById('product-categoria').value = product.categoria || 'gas';
-            document.getElementById('product-preco').value = product.preco;
-            document.getElementById('product-preco-sem-troca').value = product.preco_sem_troca || '';
+            document.getElementById('product-peso').value = product.peso_kg || 13;
+            document.getElementById('product-preco').value = product.preco || '';
+            document.getElementById('product-preco-troca').value = product.preco_troca || '';
+            document.getElementById('product-estoque').value = product.estoque_atual || 0;
+            document.getElementById('product-estoque-minimo').value = product.estoque_minimo || 10;
             document.getElementById('product-modal').classList.add('active');
         }
 
@@ -1469,10 +1501,12 @@
             const productId = document.getElementById('product-id').value;
             const data = {
                 nome: document.getElementById('product-nome').value,
-                descricao: document.getElementById('product-descricao').value,
-                categoria: document.getElementById('product-categoria').value,
+                descricao: document.getElementById('product-descricao').value || '',
+                peso_kg: parseFloat(document.getElementById('product-peso').value) || 13,
                 preco: parseFloat(document.getElementById('product-preco').value),
-                preco_sem_troca: parseFloat(document.getElementById('product-preco-sem-troca').value) || null,
+                preco_troca: parseFloat(document.getElementById('product-preco-troca').value) || null,
+                estoque_atual: parseInt(document.getElementById('product-estoque').value) || 0,
+                estoque_minimo: parseInt(document.getElementById('product-estoque-minimo').value) || 10,
                 ativo: true
             };
 
@@ -1494,7 +1528,8 @@
                     closeModal('product-modal');
                     loadProductsTable();
                 } else {
-                    showToast('Erro ao salvar', 'error');
+                    const error = await res.json();
+                    showToast(error.detail || 'Erro ao salvar', 'error');
                 }
             } catch (e) {
                 showToast('Erro ao salvar', 'error');
@@ -1551,7 +1586,27 @@
         async function exportOrdersCSV() {
             const startDate = document.getElementById('report-start').value || '';
             const endDate = document.getElementById('report-end').value || '';
-            window.open(`${API_URL}/api/reports/export/orders?start_date=${startDate}&end_date=${endDate}`, '_blank');
+            try {
+                const res = await fetch(`${API_URL}/api/reports/export/orders?start_date=${startDate}&end_date=${endDate}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `pedidos_${startDate || 'todos'}_${endDate || 'todos'}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    showToast('CSV exportado!', 'success');
+                } else {
+                    showToast('Erro ao exportar CSV', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao exportar CSV', 'error');
+            }
         }
 
         // ===== CONFIGURAÇÕES / WAHA =====
