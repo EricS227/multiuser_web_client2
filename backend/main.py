@@ -168,6 +168,7 @@ if not SECRET_KEY:
     print(f"Generated SECRET_KEY: {SECRET_KEY}")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
@@ -345,8 +346,14 @@ def verify_password(plain, hashed):
 
 def create_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    expire = brazilian_now() + (expires_delta or timedelta(minutes=30))
+    expire = brazilian_now() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def create_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = brazilian_now() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({"exp": expire, "type": "refresh"})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)):
@@ -358,9 +365,33 @@ def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Dep
         user = session.exec(select(User).where(User.email == email)).first()
         if user is None:
             raise HTTPException(status_code=401, detail="Usuário não encontrado")
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Usuário desativado")
         return user
     except (InvalidTokenError, DecodeError):
         raise HTTPException(status_code=401, detail="Token inválido")
+
+def get_current_active_user(current_user: User = Depends(get_current_user)) -> User:
+    """Retorna usuário ativo"""
+    if not current_user.is_active:
+        raise HTTPException(status_code=403, detail="Usuário desativado")
+    return current_user
+
+def require_role(allowed_roles: list):
+    """Dependency factory para verificar role do usuário"""
+    def role_checker(current_user: User = Depends(get_current_user)):
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Acesso negado. Requer role: {', '.join(allowed_roles)}"
+            )
+        return current_user
+    return role_checker
+
+# Shortcuts para verificação de role
+require_admin = require_role(["admin", "owner"])
+require_owner = require_role(["owner"])
+require_operador = require_role(["operador", "admin", "owner"])
 
 
 
@@ -593,8 +624,305 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = D
     user = session.exec(select(User).where(User.email == form_data.username)).first()
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
-    token = create_token({"sub": user.email})
-    return {"access_token": token, "token_type": "bearer"}
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Usuário desativado. Contate o administrador.")
+
+    # Atualizar last_login
+    user.last_login = brazilian_now()
+    session.add(user)
+    session.commit()
+
+    access_token = create_token({"sub": user.email})
+    refresh_token = create_refresh_token({"sub": user.email})
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "role": user.role
+        }
+    }
+
+@app.post("/refresh-token")
+def refresh_token(refresh_token: str = Form(...), session: Session = Depends(get_session)):
+    """Gera novo access token usando refresh token"""
+    try:
+        payload = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Token inválido")
+        email = payload.get("sub")
+        user = session.exec(select(User).where(User.email == email)).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="Usuário não encontrado ou desativado")
+        new_access_token = create_token({"sub": user.email})
+        return {"access_token": new_access_token, "token_type": "bearer"}
+    except (InvalidTokenError, DecodeError):
+        raise HTTPException(status_code=401, detail="Refresh token inválido ou expirado")
+
+@app.get("/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    """Retorna informações do usuário logado"""
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
+        "created_at": current_user.created_at,
+        "last_login": current_user.last_login
+    }
+
+# ==================== ADMIN ENDPOINTS ====================
+
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str = "operador"
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+@app.get("/admin/users")
+def list_users(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Lista todos os usuários (admin/owner only)"""
+    users = session.exec(select(User)).all()
+    return [
+        {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "role": u.role,
+            "is_active": u.is_active,
+            "created_at": u.created_at,
+            "last_login": u.last_login
+        }
+        for u in users
+    ]
+
+@app.post("/admin/users")
+def create_user(
+    user_data: UserCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Cria novo usuário (admin/owner only)"""
+    # Verificar se email já existe
+    existing = session.exec(select(User).where(User.email == user_data.email)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email já cadastrado")
+
+    # Apenas owner pode criar admin/owner
+    if user_data.role in ["admin", "owner"] and current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Apenas owner pode criar usuários admin/owner")
+
+    new_user = User(
+        name=user_data.name,
+        email=user_data.email,
+        password_hash=hash_password(user_data.password),
+        role=user_data.role,
+        created_by=current_user.id
+    )
+    session.add(new_user)
+    session.commit()
+    session.refresh(new_user)
+
+    # Log de auditoria
+    audit = AuditLog(
+        action="user_created",
+        user_id=current_user.id,
+        details=f"Criou usuário {new_user.email} com role {new_user.role}"
+    )
+    session.add(audit)
+    session.commit()
+
+    return {"message": "Usuário criado com sucesso", "user_id": new_user.id}
+
+@app.put("/admin/users/{user_id}")
+def update_user(
+    user_id: int,
+    user_data: UserUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza usuário (admin/owner only)"""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    # Proteções
+    if user.role == "owner" and current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Não é possível editar owner")
+
+    if user_data.role in ["admin", "owner"] and current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Apenas owner pode promover para admin/owner")
+
+    # Atualizar campos
+    if user_data.name is not None:
+        user.name = user_data.name
+    if user_data.email is not None:
+        # Verificar se novo email já existe
+        if user_data.email != user.email:
+            existing = session.exec(select(User).where(User.email == user_data.email)).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Email já em uso")
+        user.email = user_data.email
+    if user_data.role is not None:
+        user.role = user_data.role
+    if user_data.is_active is not None:
+        user.is_active = user_data.is_active
+
+    session.add(user)
+    session.commit()
+
+    # Log de auditoria
+    audit = AuditLog(
+        action="user_updated",
+        user_id=current_user.id,
+        details=f"Atualizou usuário {user.email}"
+    )
+    session.add(audit)
+    session.commit()
+
+    return {"message": "Usuário atualizado com sucesso"}
+
+@app.delete("/admin/users/{user_id}")
+def deactivate_user(
+    user_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Desativa usuário (admin/owner only) - não deleta, apenas desativa"""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    if user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="Não é possível desativar a si mesmo")
+
+    if user.role == "owner" and current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Não é possível desativar owner")
+
+    user.is_active = False
+    session.add(user)
+    session.commit()
+
+    # Log de auditoria
+    audit = AuditLog(
+        action="user_deactivated",
+        user_id=current_user.id,
+        details=f"Desativou usuário {user.email}"
+    )
+    session.add(audit)
+    session.commit()
+
+    return {"message": "Usuário desativado com sucesso"}
+
+@app.post("/admin/users/{user_id}/reset-password")
+def reset_user_password(
+    user_id: int,
+    new_password: str = Form(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Reseta senha de usuário (admin/owner only)"""
+    user = session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    if user.role == "owner" and current_user.role != "owner":
+        raise HTTPException(status_code=403, detail="Não é possível resetar senha de owner")
+
+    user.password_hash = hash_password(new_password)
+    session.add(user)
+    session.commit()
+
+    # Log de auditoria
+    audit = AuditLog(
+        action="password_reset",
+        user_id=current_user.id,
+        details=f"Resetou senha do usuário {user.email}"
+    )
+    session.add(audit)
+    session.commit()
+
+    return {"message": "Senha resetada com sucesso"}
+
+@app.get("/admin/audit-logs")
+def get_audit_logs(
+    limit: int = 100,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Lista logs de auditoria (admin/owner only)"""
+    logs = session.exec(
+        select(AuditLog).order_by(AuditLog.timestamp.desc()).limit(limit)
+    ).all()
+    return logs
+
+@app.get("/admin/conversations")
+def get_all_conversations_admin(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Lista todas as conversas com detalhes (admin/owner only)"""
+    conversations = session.exec(select(Conversation)).all()
+    result = []
+    for conv in conversations:
+        assigned_user = session.get(User, conv.assigned_to) if conv.assigned_to else None
+        messages_count = len(session.exec(select(Message).where(Message.conversation_id == conv.id)).all())
+        result.append({
+            "id": conv.id,
+            "customer_number": conv.customer_number,
+            "name": conv.name,
+            "status": conv.status,
+            "created_at": conv.created_at,
+            "assigned_to": assigned_user.name if assigned_user else None,
+            "assigned_to_id": conv.assigned_to,
+            "messages_count": messages_count
+        })
+    return result
+
+@app.get("/admin/stats")
+def get_admin_stats(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Estatísticas gerais do sistema (admin/owner only)"""
+    total_users = len(session.exec(select(User)).all())
+    active_users = len(session.exec(select(User).where(User.is_active == True)).all())
+    total_conversations = len(session.exec(select(Conversation)).all())
+    pending_conversations = len(session.exec(select(Conversation).where(Conversation.status == "pending")).all())
+    total_messages = len(session.exec(select(Message)).all())
+
+    # Mensagens hoje
+    today_start = brazilian_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    messages_today = len(session.exec(select(Message).where(Message.timestamp >= today_start)).all())
+
+    return {
+        "users": {
+            "total": total_users,
+            "active": active_users
+        },
+        "conversations": {
+            "total": total_conversations,
+            "pending": pending_conversations
+        },
+        "messages": {
+            "total": total_messages,
+            "today": messages_today
+        }
+    }
 
 
 @app.get("/conversations")
@@ -1859,6 +2187,378 @@ async def waha_webhook(request: Request):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": str(e)}
+
+
+# ==================== REPORTS & OWNER ENDPOINTS ====================
+
+@app.get("/api/reports/orders")
+def get_orders_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Relatório de pedidos (admin/owner)"""
+    from sqlalchemy import func
+
+    query = select(Order)
+
+    if start_date:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        query = query.where(Order.created_at >= start)
+    if end_date:
+        end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        query = query.where(Order.created_at <= end)
+
+    orders = session.exec(query).all()
+
+    # Estatísticas
+    total_orders = len(orders)
+    total_revenue = sum(float(o.total or 0) for o in orders)
+    status_counts = {}
+    for o in orders:
+        status = o.status.value if hasattr(o.status, 'value') else str(o.status)
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    return {
+        "period": {"start": start_date, "end": end_date},
+        "summary": {
+            "total_orders": total_orders,
+            "total_revenue": total_revenue,
+            "average_ticket": total_revenue / total_orders if total_orders > 0 else 0,
+            "by_status": status_counts
+        },
+        "orders": [
+            {
+                "id": o.id,
+                "status": o.status.value if hasattr(o.status, 'value') else str(o.status),
+                "total": float(o.total or 0),
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+                "endereco": f"{o.endereco_entrega}, {o.numero_entrega}" if o.endereco_entrega else None
+            }
+            for o in orders
+        ]
+    }
+
+@app.get("/api/reports/financial")
+def get_financial_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_owner)
+):
+    """Relatório financeiro (owner only)"""
+    query = select(Order)
+
+    if start_date:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        query = query.where(Order.created_at >= start)
+    if end_date:
+        end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        query = query.where(Order.created_at <= end)
+
+    orders = session.exec(query).all()
+
+    # Agrupar por dia
+    daily_revenue = {}
+    for o in orders:
+        if o.created_at:
+            day = o.created_at.strftime("%Y-%m-%d")
+            daily_revenue[day] = daily_revenue.get(day, 0) + float(o.total or 0)
+
+    # Agrupar por status
+    revenue_by_status = {}
+    for o in orders:
+        status = o.status.value if hasattr(o.status, 'value') else str(o.status)
+        revenue_by_status[status] = revenue_by_status.get(status, 0) + float(o.total or 0)
+
+    total_revenue = sum(float(o.total or 0) for o in orders)
+    completed_orders = [o for o in orders if (o.status.value if hasattr(o.status, 'value') else str(o.status)) == 'entregue']
+    completed_revenue = sum(float(o.total or 0) for o in completed_orders)
+
+    return {
+        "period": {"start": start_date, "end": end_date},
+        "summary": {
+            "total_revenue": total_revenue,
+            "completed_revenue": completed_revenue,
+            "pending_revenue": total_revenue - completed_revenue,
+            "total_orders": len(orders),
+            "completed_orders": len(completed_orders),
+            "average_ticket": total_revenue / len(orders) if orders else 0
+        },
+        "daily_revenue": daily_revenue,
+        "revenue_by_status": revenue_by_status
+    }
+
+@app.get("/api/reports/export/orders")
+def export_orders_csv(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_owner)
+):
+    """Exporta pedidos em CSV (owner only)"""
+    from fastapi.responses import Response
+
+    query = select(Order)
+
+    if start_date:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        query = query.where(Order.created_at >= start)
+    if end_date:
+        end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+        query = query.where(Order.created_at <= end)
+
+    orders = session.exec(query).all()
+
+    # Gerar CSV
+    csv_lines = ["ID,Status,Total,Endereco,Bairro,Data"]
+    for o in orders:
+        status = o.status.value if hasattr(o.status, 'value') else str(o.status)
+        date_str = o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else ""
+        csv_lines.append(f"{o.id},{status},{o.total},{o.endereco_entrega},{o.bairro_entrega},{date_str}")
+
+    csv_content = "\n".join(csv_lines)
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=pedidos_{start_date or 'all'}_{end_date or 'all'}.csv"}
+    )
+
+@app.get("/api/reports/export/customers")
+def export_customers_csv(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_owner)
+):
+    """Exporta clientes em CSV (owner only)"""
+    from fastapi.responses import Response
+
+    customers = session.exec(select(Customer)).all()
+
+    csv_lines = ["ID,Nome,Telefone,Endereco,Bairro,Cidade"]
+    for c in customers:
+        csv_lines.append(f"{c.id},{c.nome},{c.telefone},{c.endereco},{c.bairro},{c.cidade}")
+
+    csv_content = "\n".join(csv_lines)
+
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=clientes.csv"}
+    )
+
+@app.get("/owner/stats")
+def get_owner_stats(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_owner)
+):
+    """Estatísticas completas para o owner"""
+    today = brazilian_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    week_ago = today - timedelta(days=7)
+    month_ago = today - timedelta(days=30)
+
+    # Pedidos
+    all_orders = session.exec(select(Order)).all()
+    today_orders = [o for o in all_orders if o.created_at and o.created_at >= today]
+    week_orders = [o for o in all_orders if o.created_at and o.created_at >= week_ago]
+    month_orders = [o for o in all_orders if o.created_at and o.created_at >= month_ago]
+
+    # Faturamento
+    today_revenue = sum(float(o.total or 0) for o in today_orders)
+    week_revenue = sum(float(o.total or 0) for o in week_orders)
+    month_revenue = sum(float(o.total or 0) for o in month_orders)
+
+    # Clientes
+    total_customers = len(session.exec(select(Customer)).all())
+
+    # Entregadores
+    all_drivers = session.exec(select(Driver)).all()
+    online_drivers = [d for d in all_drivers if d.status and (d.status.value if hasattr(d.status, 'value') else str(d.status)) == 'disponivel']
+
+    # Produtos
+    total_products = len(session.exec(select(Product)).all())
+
+    # Conversas
+    total_conversations = len(session.exec(select(Conversation)).all())
+    pending_conversations = len(session.exec(select(Conversation).where(Conversation.status == "pending")).all())
+
+    return {
+        "orders": {
+            "today": len(today_orders),
+            "week": len(week_orders),
+            "month": len(month_orders),
+            "total": len(all_orders)
+        },
+        "revenue": {
+            "today": today_revenue,
+            "week": week_revenue,
+            "month": month_revenue
+        },
+        "customers": {
+            "total": total_customers
+        },
+        "drivers": {
+            "total": len(all_drivers),
+            "online": len(online_drivers)
+        },
+        "products": {
+            "total": total_products
+        },
+        "conversations": {
+            "total": total_conversations,
+            "pending": pending_conversations
+        }
+    }
+
+# --- Products CRUD (Admin) ---
+class ProductCreate(BaseModel):
+    nome: str
+    descricao: Optional[str] = None
+    preco: float
+    preco_sem_troca: Optional[float] = None
+    categoria: str = "gas"
+    ativo: bool = True
+
+class ProductUpdate(BaseModel):
+    nome: Optional[str] = None
+    descricao: Optional[str] = None
+    preco: Optional[float] = None
+    preco_sem_troca: Optional[float] = None
+    categoria: Optional[str] = None
+    ativo: Optional[bool] = None
+
+@app.post("/api/products")
+def create_product(
+    data: ProductCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Cria novo produto (admin/owner)"""
+    product = Product(**data.model_dump())
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return product
+
+@app.put("/api/products/{product_id}")
+def update_product(
+    product_id: int,
+    data: ProductUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza produto (admin/owner)"""
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(product, key, value)
+
+    session.add(product)
+    session.commit()
+    session.refresh(product)
+    return product
+
+@app.delete("/api/products/{product_id}")
+def delete_product(
+    product_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Remove produto (admin/owner)"""
+    product = session.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Produto não encontrado")
+
+    # Soft delete - apenas desativa
+    product.ativo = False
+    session.add(product)
+    session.commit()
+    return {"message": "Produto desativado com sucesso"}
+
+# --- Drivers CRUD (Admin) ---
+@app.put("/api/drivers/{driver_id}")
+def update_driver(
+    driver_id: int,
+    data: DriverCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza entregador (admin/owner)"""
+    driver = session.get(Driver, driver_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Entregador não encontrado")
+
+    for key, value in data.model_dump().items():
+        setattr(driver, key, value)
+
+    session.add(driver)
+    session.commit()
+    session.refresh(driver)
+    return driver
+
+@app.delete("/api/drivers/{driver_id}")
+def delete_driver(
+    driver_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Remove entregador (admin/owner)"""
+    driver = session.get(Driver, driver_id)
+    if not driver:
+        raise HTTPException(status_code=404, detail="Entregador não encontrado")
+
+    session.delete(driver)
+    session.commit()
+    return {"message": "Entregador removido com sucesso"}
+
+# --- Customers CRUD (Admin) ---
+class CustomerUpdate(BaseModel):
+    nome: Optional[str] = None
+    telefone: Optional[str] = None
+    endereco: Optional[str] = None
+    numero: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+
+@app.put("/api/customers/{customer_id}")
+def update_customer(
+    customer_id: int,
+    data: CustomerUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Atualiza cliente (admin/owner)"""
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(customer, key, value)
+
+    session.add(customer)
+    session.commit()
+    session.refresh(customer)
+    return customer
+
+@app.delete("/api/customers/{customer_id}")
+def delete_customer(
+    customer_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(require_admin)
+):
+    """Remove cliente (admin/owner)"""
+    customer = session.get(Customer, customer_id)
+    if not customer:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado")
+
+    session.delete(customer)
+    session.commit()
+    return {"message": "Cliente removido com sucesso"}
 
 
 # ===== STATIC FILES =====
