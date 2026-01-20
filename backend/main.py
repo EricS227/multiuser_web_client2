@@ -905,8 +905,8 @@ def get_admin_stats(
     pending_conversations = len(session.exec(select(Conversation).where(Conversation.status == "pending")).all())
     total_messages = len(session.exec(select(Message)).all())
 
-    # Mensagens hoje
-    today_start = brazilian_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Mensagens hoje (usar datetime naive para compatibilidade com banco)
+    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     messages_today = len(session.exec(select(Message).where(Message.timestamp >= today_start)).all())
 
     return {
@@ -1443,9 +1443,9 @@ def get_chatbot_analytics(user: User = Depends(get_current_user), session: Sessi
             .group_by(BotInteraction.escalation_reason)
         ).all()
         
-        # Recent interactions (last 24 hours)
+        # Recent interactions (last 24 hours) - usar datetime naive
         from datetime import datetime, timedelta
-        yesterday = brazilian_now() - timedelta(days=1)
+        yesterday = datetime.now() - timedelta(days=1)
         recent_interactions = session.exec(
             select(func.count(BotInteraction.id))
             .where(BotInteraction.timestamp >= yesterday)
@@ -2354,15 +2354,25 @@ def get_owner_stats(
     current_user: User = Depends(require_owner)
 ):
     """Estatísticas completas para o owner"""
-    today = brazilian_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    # Usar datetime naive para comparação com banco de dados
+    now = datetime.now()
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = today - timedelta(days=7)
     month_ago = today - timedelta(days=30)
 
+    # Função auxiliar para normalizar datetime (remover timezone se existir)
+    def normalize_dt(dt):
+        if dt is None:
+            return None
+        if dt.tzinfo is not None:
+            return dt.replace(tzinfo=None)
+        return dt
+
     # Pedidos
     all_orders = session.exec(select(Order)).all()
-    today_orders = [o for o in all_orders if o.created_at and o.created_at >= today]
-    week_orders = [o for o in all_orders if o.created_at and o.created_at >= week_ago]
-    month_orders = [o for o in all_orders if o.created_at and o.created_at >= month_ago]
+    today_orders = [o for o in all_orders if normalize_dt(o.created_at) and normalize_dt(o.created_at) >= today]
+    week_orders = [o for o in all_orders if normalize_dt(o.created_at) and normalize_dt(o.created_at) >= week_ago]
+    month_orders = [o for o in all_orders if normalize_dt(o.created_at) and normalize_dt(o.created_at) >= month_ago]
 
     # Faturamento
     today_revenue = sum(float(o.total or 0) for o in today_orders)
@@ -2563,14 +2573,19 @@ def delete_customer(
 
 # ===== STATIC FILES =====
 
+# Prioridade: frontend/ > static/
+FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 
-# Only mount static files if directory exists
-if os.path.exists(STATIC_DIR):
+# Usar frontend/ como pasta principal, fallback para static/
+if os.path.exists(FRONTEND_DIR):
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="static")
+    print(f"Static files mounted from: {FRONTEND_DIR}")
+elif os.path.exists(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
-    print(f"Static files mounted from: {STATIC_DIR}")
+    print(f"Static files mounted from: {STATIC_DIR} (fallback)")
 else:
-    print(f"Static directory not found: {STATIC_DIR}")
+    print(f"No static directory found: {FRONTEND_DIR} or {STATIC_DIR}")
 
 print("FastAPI application startup completed successfully!")
 print("All routes and endpoints are now available.")
