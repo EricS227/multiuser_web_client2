@@ -1,0 +1,1525 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin - Gas Express</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f5f5f5;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            position: fixed;
+            width: 250px;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: white;
+        }
+
+        .logo-subtitle {
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 30px;
+        }
+
+        .user-info {
+            background: rgba(255,255,255,0.15);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+
+        .user-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: white;
+        }
+
+        .user-role {
+            font-size: 12px;
+            color: rgba(255,255,255,0.9);
+            text-transform: uppercase;
+        }
+
+        .menu-section {
+            margin-bottom: 20px;
+        }
+
+        .menu-title {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 10px;
+            padding-left: 10px;
+        }
+
+        .menu-item {
+            padding: 12px 15px;
+            margin: 5px 0;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s;
+        }
+
+        .menu-item:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .menu-item.active {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .menu-item span {
+            font-size: 18px;
+        }
+
+        .logout-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            padding: 12px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+            transition: background 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 250px;
+            padding: 30px;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #667eea;
+            font-size: 28px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stat-card .subvalue {
+            font-size: 13px;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .stat-card.blue { border-left: 4px solid #667eea; }
+        .stat-card.green { border-left: 4px solid #28a745; }
+        .stat-card.orange { border-left: 4px solid #fd7e14; }
+        .stat-card.red { border-left: 4px solid #dc3545; }
+
+        /* Sections */
+        .section {
+            display: none;
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+
+        .section.active {
+            display: block;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section-header h2 {
+            color: #667eea;
+            font-size: 20px;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success { background: #28a745; color: white; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-warning { background: #fd7e14; color: white; }
+        .btn-secondary { background: #6c757d; color: white; }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        /* Table */
+        .table-container {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 14px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #666;
+            font-size: 12px;
+            text-transform: uppercase;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Badges */
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-info { background: #cce5ff; color: #004085; }
+        .badge-secondary { background: #e9ecef; color: #495057; }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .modal-header h2 {
+            font-size: 20px;
+            color: #667eea;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            margin-top: 25px;
+        }
+
+        /* Search */
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .search-box input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* Chat Panel */
+        .chat-container {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+            height: 500px;
+        }
+
+        .conversation-list {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow-y: auto;
+        }
+
+        .conversation-item {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+        }
+
+        .conversation-item:hover,
+        .conversation-item.active {
+            background: #f0f0ff;
+        }
+
+        .conversation-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .conversation-preview {
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .conversation-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .chat-panel {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            max-width: 80%;
+        }
+
+        .message.incoming {
+            margin-right: auto;
+        }
+
+        .message.outgoing {
+            margin-left: auto;
+        }
+
+        .message-bubble {
+            padding: 10px 15px;
+            border-radius: 15px;
+        }
+
+        .incoming .message-bubble {
+            background: #f0f0f0;
+        }
+
+        .outgoing .message-bubble {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-info {
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        /* Audit Log */
+        .log-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .log-item:last-child {
+            border-bottom: none;
+        }
+
+        .log-action {
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .log-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .log-details {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 2000;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        .toast.info { background: #17a2b8; }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="logo">Gas Express</div>
+            <div class="logo-subtitle">Painel Administrativo</div>
+
+            <div class="user-info">
+                <div class="user-name" id="user-name">Carregando...</div>
+                <div class="user-role" id="user-role-display">Admin</div>
+            </div>
+
+            <div class="menu-section">
+                <div class="menu-title">Principal</div>
+                <div class="menu-item active" onclick="showSection('dashboard')">
+                    <span>📊</span> Dashboard
+                </div>
+                <div class="menu-item" onclick="showSection('users')">
+                    <span>👥</span> Usuários
+                </div>
+                <div class="menu-item" onclick="showSection('products')">
+                    <span>📦</span> Produtos
+                </div>
+                <div class="menu-item" onclick="showSection('conversations')">
+                    <span>💬</span> Conversas
+                </div>
+            </div>
+
+            <div class="menu-section">
+                <div class="menu-title">Relatórios</div>
+                <div class="menu-item" onclick="showSection('reports')">
+                    <span>📈</span> Relatório de Pedidos
+                </div>
+                <div class="menu-item" onclick="showSection('audit')">
+                    <span>📋</span> Logs de Auditoria
+                </div>
+            </div>
+
+            <div class="logout-btn" onclick="logout()">
+                Sair do Sistema
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <h1 id="page-title">Dashboard</h1>
+                <div class="header-actions">
+                    <span id="current-time"></span>
+                </div>
+            </div>
+
+            <!-- Dashboard Section -->
+            <div class="section active" id="section-dashboard">
+                <div class="stats-grid">
+                    <div class="stat-card blue">
+                        <h3>Total de Usuários</h3>
+                        <div class="value" id="stat-users">0</div>
+                        <div class="subvalue"><span id="stat-active-users">0</span> ativos</div>
+                    </div>
+                    <div class="stat-card green">
+                        <h3>Conversas</h3>
+                        <div class="value" id="stat-conversations">0</div>
+                        <div class="subvalue"><span id="stat-pending">0</span> pendentes</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <h3>Mensagens Hoje</h3>
+                        <div class="value" id="stat-messages-today">0</div>
+                        <div class="subvalue">Total: <span id="stat-messages-total">0</span></div>
+                    </div>
+                </div>
+
+                <div class="section-header">
+                    <h2>Atividade Recente</h2>
+                </div>
+                <div id="recent-activity">
+                    <p style="color: #666;">Carregando atividades...</p>
+                </div>
+            </div>
+
+            <!-- Users Section -->
+            <div class="section" id="section-users">
+                <div class="section-header">
+                    <h2>Gerenciar Usuários</h2>
+                    <button class="btn btn-primary" onclick="openCreateUserModal()">
+                        + Novo Usuário
+                    </button>
+                </div>
+
+                <div class="search-box">
+                    <input type="text" id="search-users" placeholder="Buscar por nome ou email..." oninput="filterUsers()">
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Status</th>
+                                <th>Último Login</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table">
+                            <tr><td colspan="6">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Conversations Section -->
+            <div class="section" id="section-conversations">
+                <div class="section-header">
+                    <h2>Todas as Conversas</h2>
+                </div>
+
+                <div class="chat-container">
+                    <div class="conversation-list" id="conversation-list">
+                        <p style="padding: 20px; color: #666;">Carregando conversas...</p>
+                    </div>
+                    <div class="chat-panel">
+                        <div class="chat-header" id="chat-header">
+                            Selecione uma conversa
+                        </div>
+                        <div class="chat-messages" id="chat-messages">
+                            <p style="color: #999; text-align: center; margin-top: 50px;">
+                                Selecione uma conversa para ver as mensagens
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Products Section -->
+            <div class="section" id="section-products">
+                <div class="section-header">
+                    <h2>Gerenciar Produtos</h2>
+                    <button class="btn btn-primary" onclick="openCreateProductModal()">
+                        + Novo Produto
+                    </button>
+                </div>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Categoria</th>
+                                <th>Preço</th>
+                                <th>Preço s/ Troca</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody id="products-table">
+                            <tr><td colspan="6">Carregando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reports Section -->
+            <div class="section" id="section-reports">
+                <div class="section-header">
+                    <h2>Relatório de Pedidos</h2>
+                </div>
+
+                <div class="search-box" style="margin-bottom: 20px;">
+                    <input type="date" id="report-start-date" style="padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                    <input type="date" id="report-end-date" style="padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px;">
+                    <button class="btn btn-primary" onclick="loadOrdersReport()">Gerar Relatório</button>
+                </div>
+
+                <div class="stats-grid" id="report-stats" style="display: none;">
+                    <div class="stat-card blue">
+                        <h3>Total de Pedidos</h3>
+                        <div class="value" id="report-total-orders">0</div>
+                    </div>
+                    <div class="stat-card green">
+                        <h3>Faturamento Total</h3>
+                        <div class="value" id="report-total-revenue">R$ 0</div>
+                    </div>
+                    <div class="stat-card orange">
+                        <h3>Ticket Médio</h3>
+                        <div class="value" id="report-avg-ticket">R$ 0</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">Pedidos por Status</h3>
+                    <div id="report-by-status"></div>
+                </div>
+
+                <div class="table-container" style="margin-top: 20px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Status</th>
+                                <th>Total</th>
+                                <th>Endereço</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-orders-table">
+                            <tr><td colspan="5" style="color: #666;">Selecione um período e clique em "Gerar Relatório"</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Audit Section -->
+            <div class="section" id="section-audit">
+                <div class="section-header">
+                    <h2>Logs de Auditoria</h2>
+                    <button class="btn btn-secondary" onclick="loadAuditLogs()">Atualizar</button>
+                </div>
+
+                <div id="audit-logs">
+                    <p style="color: #666;">Carregando logs...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Product Modal -->
+    <div class="modal-overlay" id="product-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="product-modal-title">Novo Produto</h2>
+                <button class="modal-close" onclick="closeModal('product-modal')">&times;</button>
+            </div>
+
+            <form id="product-form" onsubmit="saveProduct(event)">
+                <input type="hidden" id="edit-product-id">
+
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="product-nome" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Descrição</label>
+                    <input type="text" id="product-descricao">
+                </div>
+
+                <div class="form-group">
+                    <label>Categoria</label>
+                    <select id="product-categoria">
+                        <option value="gas">Gás</option>
+                        <option value="agua">Água</option>
+                        <option value="acessorio">Acessório</option>
+                        <option value="outro">Outro</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Preço (com troca)</label>
+                    <input type="number" id="product-preco" step="0.01" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Preço (sem troca)</label>
+                    <input type="number" id="product-preco-sem-troca" step="0.01">
+                </div>
+
+                <div class="form-group">
+                    <label>Status</label>
+                    <select id="product-ativo">
+                        <option value="true">Ativo</option>
+                        <option value="false">Inativo</option>
+                    </select>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('product-modal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Create/Edit User Modal -->
+    <div class="modal-overlay" id="user-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="modal-title">Novo Usuário</h2>
+                <button class="modal-close" onclick="closeModal('user-modal')">&times;</button>
+            </div>
+
+            <form id="user-form" onsubmit="saveUser(event)">
+                <input type="hidden" id="edit-user-id">
+
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="user-name-input" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="user-email-input" required>
+                </div>
+
+                <div class="form-group" id="password-group">
+                    <label>Senha</label>
+                    <input type="password" id="user-password-input" minlength="6">
+                </div>
+
+                <div class="form-group">
+                    <label>Nível de Acesso</label>
+                    <select id="user-role-input">
+                        <option value="operador">Operador</option>
+                        <option value="admin">Administrador</option>
+                        <option value="owner" id="owner-option">Dono</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="status-group" style="display: none;">
+                    <label>Status</label>
+                    <select id="user-status-input">
+                        <option value="true">Ativo</option>
+                        <option value="false">Inativo</option>
+                    </select>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('user-modal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        // ===== CONFIG =====
+        const API_URL = window.location.origin;
+        let token = localStorage.getItem('access_token');
+        let currentUser = JSON.parse(localStorage.getItem('user') || 'null');
+        let allUsers = [];
+        let currentConversation = null;
+
+        // ===== AUTH CHECK =====
+        async function checkAuth() {
+            if (!token || !currentUser) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Verificar se é admin ou owner
+            if (!['admin', 'owner'].includes(currentUser.role)) {
+                window.location.href = 'acesso_negado.html?required=admin';
+                return;
+            }
+
+            // Verificar token
+            try {
+                const res = await fetch(`${API_URL}/me`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Token inválido');
+
+                const user = await res.json();
+                document.getElementById('user-name').textContent = user.name;
+                document.getElementById('user-role-display').textContent = formatRole(user.role);
+
+                // Se não é owner, esconder opção de criar owner
+                if (user.role !== 'owner') {
+                    document.getElementById('owner-option').style.display = 'none';
+                }
+
+            } catch (e) {
+                localStorage.clear();
+                window.location.href = 'login.html';
+            }
+        }
+
+        // ===== API HELPERS =====
+        async function apiGet(endpoint) {
+            const res = await fetch(`${API_URL}${endpoint}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.status === 403) {
+                window.location.href = 'acesso_negado.html';
+                return null;
+            }
+            if (!res.ok) throw new Error('Erro na requisição');
+            return res.json();
+        }
+
+        async function apiPost(endpoint, data) {
+            const res = await fetch(`${API_URL}${endpoint}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            return res;
+        }
+
+        async function apiPut(endpoint, data) {
+            const res = await fetch(`${API_URL}${endpoint}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            return res;
+        }
+
+        async function apiDelete(endpoint) {
+            const res = await fetch(`${API_URL}${endpoint}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            return res;
+        }
+
+        // ===== NAVIGATION =====
+        function showSection(section) {
+            // Update menu
+            document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
+            event.target.closest('.menu-item').classList.add('active');
+
+            // Update sections
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.getElementById(`section-${section}`).classList.add('active');
+
+            // Update title
+            const titles = {
+                'dashboard': 'Dashboard',
+                'users': 'Gerenciar Usuários',
+                'products': 'Gerenciar Produtos',
+                'conversations': 'Todas as Conversas',
+                'reports': 'Relatório de Pedidos',
+                'audit': 'Logs de Auditoria'
+            };
+            document.getElementById('page-title').textContent = titles[section];
+
+            // Load data
+            switch (section) {
+                case 'dashboard': loadDashboard(); break;
+                case 'users': loadUsers(); break;
+                case 'products': loadProducts(); break;
+                case 'conversations': loadConversations(); break;
+                case 'reports': break; // Carrega sob demanda
+                case 'audit': loadAuditLogs(); break;
+            }
+        }
+
+        // ===== DASHBOARD =====
+        async function loadDashboard() {
+            try {
+                const stats = await apiGet('/admin/stats');
+                if (!stats) return;
+
+                document.getElementById('stat-users').textContent = stats.users.total;
+                document.getElementById('stat-active-users').textContent = stats.users.active;
+                document.getElementById('stat-conversations').textContent = stats.conversations.total;
+                document.getElementById('stat-pending').textContent = stats.conversations.pending;
+                document.getElementById('stat-messages-today').textContent = stats.messages.today;
+                document.getElementById('stat-messages-total').textContent = stats.messages.total;
+
+                // Load recent activity
+                const logs = await apiGet('/admin/audit-logs?limit=10');
+                if (logs) {
+                    renderRecentActivity(logs);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar dashboard:', e);
+            }
+        }
+
+        function renderRecentActivity(logs) {
+            const container = document.getElementById('recent-activity');
+            if (logs.length === 0) {
+                container.innerHTML = '<p style="color: #666;">Nenhuma atividade recente</p>';
+                return;
+            }
+
+            container.innerHTML = logs.map(log => `
+                <div class="log-item">
+                    <div class="log-action">${formatAction(log.action)}</div>
+                    <div class="log-time">${formatDateTime(log.timestamp)}</div>
+                    <div class="log-details">${log.details || ''}</div>
+                </div>
+            `).join('');
+        }
+
+        // ===== USERS =====
+        async function loadUsers() {
+            try {
+                const users = await apiGet('/admin/users');
+                if (!users) return;
+                allUsers = users;
+                renderUsers(users);
+            } catch (e) {
+                console.error('Erro ao carregar usuários:', e);
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('users-table');
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6">Nenhum usuário encontrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(user => `
+                <tr>
+                    <td><strong>${user.name}</strong></td>
+                    <td>${user.email}</td>
+                    <td><span class="badge badge-${getRoleBadge(user.role)}">${formatRole(user.role)}</span></td>
+                    <td>
+                        <span class="badge ${user.is_active ? 'badge-success' : 'badge-danger'}">
+                            ${user.is_active ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td>${user.last_login ? formatDateTime(user.last_login) : 'Nunca'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editUser(${user.id})">Editar</button>
+                        ${user.is_active
+                            ? `<button class="btn btn-sm btn-danger" onclick="deactivateUser(${user.id})">Desativar</button>`
+                            : `<button class="btn btn-sm btn-success" onclick="activateUser(${user.id})">Ativar</button>`
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function filterUsers() {
+            const search = document.getElementById('search-users').value.toLowerCase();
+            const filtered = allUsers.filter(u =>
+                u.name.toLowerCase().includes(search) ||
+                u.email.toLowerCase().includes(search)
+            );
+            renderUsers(filtered);
+        }
+
+        function openCreateUserModal() {
+            document.getElementById('modal-title').textContent = 'Novo Usuário';
+            document.getElementById('edit-user-id').value = '';
+            document.getElementById('user-name-input').value = '';
+            document.getElementById('user-email-input').value = '';
+            document.getElementById('user-password-input').value = '';
+            document.getElementById('user-password-input').required = true;
+            document.getElementById('user-role-input').value = 'operador';
+            document.getElementById('password-group').style.display = 'block';
+            document.getElementById('status-group').style.display = 'none';
+            document.getElementById('user-modal').classList.add('active');
+        }
+
+        function editUser(userId) {
+            const user = allUsers.find(u => u.id === userId);
+            if (!user) return;
+
+            document.getElementById('modal-title').textContent = 'Editar Usuário';
+            document.getElementById('edit-user-id').value = user.id;
+            document.getElementById('user-name-input').value = user.name;
+            document.getElementById('user-email-input').value = user.email;
+            document.getElementById('user-password-input').value = '';
+            document.getElementById('user-password-input').required = false;
+            document.getElementById('user-role-input').value = user.role;
+            document.getElementById('user-status-input').value = user.is_active ? 'true' : 'false';
+            document.getElementById('password-group').style.display = 'none';
+            document.getElementById('status-group').style.display = 'block';
+            document.getElementById('user-modal').classList.add('active');
+        }
+
+        async function saveUser(e) {
+            e.preventDefault();
+            const userId = document.getElementById('edit-user-id').value;
+            const name = document.getElementById('user-name-input').value;
+            const email = document.getElementById('user-email-input').value;
+            const password = document.getElementById('user-password-input').value;
+            const role = document.getElementById('user-role-input').value;
+
+            try {
+                let res;
+                if (userId) {
+                    // Update
+                    const data = {
+                        name,
+                        email,
+                        role,
+                        is_active: document.getElementById('user-status-input').value === 'true'
+                    };
+                    res = await apiPut(`/admin/users/${userId}`, data);
+                } else {
+                    // Create
+                    res = await apiPost('/admin/users', { name, email, password, role });
+                }
+
+                const result = await res.json();
+                if (res.ok) {
+                    showToast(result.message || 'Operação realizada com sucesso', 'success');
+                    closeModal('user-modal');
+                    loadUsers();
+                } else {
+                    showToast(result.detail || 'Erro na operação', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao salvar usuário', 'error');
+            }
+        }
+
+        async function deactivateUser(userId) {
+            if (!confirm('Tem certeza que deseja desativar este usuário?')) return;
+
+            try {
+                const res = await apiDelete(`/admin/users/${userId}`);
+                const result = await res.json();
+                if (res.ok) {
+                    showToast('Usuário desativado', 'success');
+                    loadUsers();
+                } else {
+                    showToast(result.detail || 'Erro ao desativar', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao desativar usuário', 'error');
+            }
+        }
+
+        async function activateUser(userId) {
+            try {
+                const res = await apiPut(`/admin/users/${userId}`, { is_active: true });
+                if (res.ok) {
+                    showToast('Usuário ativado', 'success');
+                    loadUsers();
+                }
+            } catch (e) {
+                showToast('Erro ao ativar usuário', 'error');
+            }
+        }
+
+        // ===== CONVERSATIONS =====
+        async function loadConversations() {
+            try {
+                const conversations = await apiGet('/admin/conversations');
+                if (!conversations) return;
+                renderConversationList(conversations);
+            } catch (e) {
+                console.error('Erro ao carregar conversas:', e);
+            }
+        }
+
+        function renderConversationList(conversations) {
+            const container = document.getElementById('conversation-list');
+            if (conversations.length === 0) {
+                container.innerHTML = '<p style="padding: 20px; color: #666;">Nenhuma conversa encontrada</p>';
+                return;
+            }
+
+            container.innerHTML = conversations.map(conv => `
+                <div class="conversation-item ${currentConversation === conv.id ? 'active' : ''}"
+                     onclick="selectConversation(${conv.id})">
+                    <div class="conversation-name">${conv.name || conv.customer_number}</div>
+                    <div class="conversation-preview">
+                        <span class="badge badge-${getStatusBadge(conv.status)}">${conv.status}</span>
+                    </div>
+                    <div class="conversation-meta">
+                        <span>${conv.assigned_to || 'Não atribuída'}</span>
+                        <span>${conv.messages_count} msgs</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function selectConversation(convId) {
+            currentConversation = convId;
+            loadConversations();
+
+            try {
+                const messages = await apiGet(`/conversations/${convId}/messages`);
+                if (!messages) return;
+
+                document.getElementById('chat-header').textContent = `Conversa #${convId}`;
+                renderMessages(messages);
+            } catch (e) {
+                console.error('Erro ao carregar mensagens:', e);
+            }
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('chat-messages');
+            if (messages.length === 0) {
+                container.innerHTML = '<p style="color: #999; text-align: center;">Nenhuma mensagem</p>';
+                return;
+            }
+
+            container.innerHTML = messages.map(msg => {
+                const isOutgoing = msg.sender === 'agent' || msg.sender === 'bot';
+                return `
+                    <div class="message ${isOutgoing ? 'outgoing' : 'incoming'}">
+                        <div class="message-bubble">${msg.content}</div>
+                        <div class="message-info">${msg.sender} - ${formatTime(msg.timestamp)}</div>
+                    </div>
+                `;
+            }).join('');
+
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // ===== AUDIT LOGS =====
+        async function loadAuditLogs() {
+            try {
+                const logs = await apiGet('/admin/audit-logs?limit=50');
+                if (!logs) return;
+                renderAuditLogs(logs);
+            } catch (e) {
+                console.error('Erro ao carregar logs:', e);
+            }
+        }
+
+        function renderAuditLogs(logs) {
+            const container = document.getElementById('audit-logs');
+            if (logs.length === 0) {
+                container.innerHTML = '<p style="color: #666;">Nenhum log encontrado</p>';
+                return;
+            }
+
+            container.innerHTML = logs.map(log => `
+                <div class="log-item">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span class="log-action">${formatAction(log.action)}</span>
+                        <span class="log-time">${formatDateTime(log.timestamp)}</span>
+                    </div>
+                    <div class="log-details">${log.details || 'Sem detalhes'}</div>
+                </div>
+            `).join('');
+        }
+
+        // ===== PRODUCTS =====
+        let allProducts = [];
+
+        async function loadProducts() {
+            try {
+                const res = await fetch(`${API_URL}/api/products`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    allProducts = await res.json();
+                    renderProducts(allProducts);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar produtos:', e);
+            }
+        }
+
+        function renderProducts(products) {
+            const tbody = document.getElementById('products-table');
+            if (products.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6">Nenhum produto encontrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = products.map(p => `
+                <tr>
+                    <td><strong>${p.nome}</strong></td>
+                    <td><span class="badge badge-info">${p.categoria || 'gas'}</span></td>
+                    <td>R$ ${(p.preco || 0).toFixed(2)}</td>
+                    <td>R$ ${(p.preco_sem_troca || 0).toFixed(2)}</td>
+                    <td>
+                        <span class="badge ${p.ativo !== false ? 'badge-success' : 'badge-danger'}">
+                            ${p.ativo !== false ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editProduct(${p.id})">Editar</button>
+                        ${p.ativo !== false
+                            ? `<button class="btn btn-sm btn-danger" onclick="deleteProduct(${p.id})">Desativar</button>`
+                            : ''
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openCreateProductModal() {
+            document.getElementById('product-modal-title').textContent = 'Novo Produto';
+            document.getElementById('edit-product-id').value = '';
+            document.getElementById('product-nome').value = '';
+            document.getElementById('product-descricao').value = '';
+            document.getElementById('product-categoria').value = 'gas';
+            document.getElementById('product-preco').value = '';
+            document.getElementById('product-preco-sem-troca').value = '';
+            document.getElementById('product-ativo').value = 'true';
+            document.getElementById('product-modal').classList.add('active');
+        }
+
+        function editProduct(productId) {
+            const product = allProducts.find(p => p.id === productId);
+            if (!product) return;
+
+            document.getElementById('product-modal-title').textContent = 'Editar Produto';
+            document.getElementById('edit-product-id').value = product.id;
+            document.getElementById('product-nome').value = product.nome || '';
+            document.getElementById('product-descricao').value = product.descricao || '';
+            document.getElementById('product-categoria').value = product.categoria || 'gas';
+            document.getElementById('product-preco').value = product.preco || '';
+            document.getElementById('product-preco-sem-troca').value = product.preco_sem_troca || '';
+            document.getElementById('product-ativo').value = product.ativo !== false ? 'true' : 'false';
+            document.getElementById('product-modal').classList.add('active');
+        }
+
+        async function saveProduct(e) {
+            e.preventDefault();
+            const productId = document.getElementById('edit-product-id').value;
+            const data = {
+                nome: document.getElementById('product-nome').value,
+                descricao: document.getElementById('product-descricao').value,
+                categoria: document.getElementById('product-categoria').value,
+                preco: parseFloat(document.getElementById('product-preco').value),
+                preco_sem_troca: parseFloat(document.getElementById('product-preco-sem-troca').value) || null,
+                ativo: document.getElementById('product-ativo').value === 'true'
+            };
+
+            try {
+                let res;
+                if (productId) {
+                    res = await apiPut(`/api/products/${productId}`, data);
+                } else {
+                    res = await apiPost('/api/products', data);
+                }
+
+                if (res.ok) {
+                    showToast('Produto salvo com sucesso', 'success');
+                    closeModal('product-modal');
+                    loadProducts();
+                } else {
+                    const result = await res.json();
+                    showToast(result.detail || 'Erro ao salvar produto', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao salvar produto', 'error');
+            }
+        }
+
+        async function deleteProduct(productId) {
+            if (!confirm('Tem certeza que deseja desativar este produto?')) return;
+
+            try {
+                const res = await apiDelete(`/api/products/${productId}`);
+                if (res.ok) {
+                    showToast('Produto desativado', 'success');
+                    loadProducts();
+                } else {
+                    const result = await res.json();
+                    showToast(result.detail || 'Erro ao desativar', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao desativar produto', 'error');
+            }
+        }
+
+        // ===== REPORTS =====
+        async function loadOrdersReport() {
+            const startDate = document.getElementById('report-start-date').value;
+            const endDate = document.getElementById('report-end-date').value;
+
+            let url = `${API_URL}/api/reports/orders`;
+            const params = [];
+            if (startDate) params.push(`start_date=${startDate}`);
+            if (endDate) params.push(`end_date=${endDate}`);
+            if (params.length) url += '?' + params.join('&');
+
+            try {
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (!res.ok) {
+                    showToast('Erro ao carregar relatório', 'error');
+                    return;
+                }
+
+                const data = await res.json();
+                renderOrdersReport(data);
+            } catch (e) {
+                console.error('Erro ao carregar relatório:', e);
+                showToast('Erro ao carregar relatório', 'error');
+            }
+        }
+
+        function renderOrdersReport(data) {
+            // Mostrar stats
+            document.getElementById('report-stats').style.display = 'grid';
+            document.getElementById('report-total-orders').textContent = data.summary.total_orders;
+            document.getElementById('report-total-revenue').textContent = `R$ ${data.summary.total_revenue.toFixed(2)}`;
+            document.getElementById('report-avg-ticket').textContent = `R$ ${data.summary.average_ticket.toFixed(2)}`;
+
+            // Status badges
+            const statusContainer = document.getElementById('report-by-status');
+            const statusBadges = Object.entries(data.summary.by_status).map(([status, count]) => `
+                <span class="badge badge-info" style="margin: 5px; padding: 8px 15px; font-size: 14px;">
+                    ${status}: ${count}
+                </span>
+            `).join('');
+            statusContainer.innerHTML = statusBadges || '<p style="color: #666;">Sem dados</p>';
+
+            // Tabela de pedidos
+            const tbody = document.getElementById('report-orders-table');
+            if (data.orders.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="color: #666;">Nenhum pedido no período</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.orders.map(o => `
+                <tr>
+                    <td>#${o.id}</td>
+                    <td><span class="badge badge-info">${o.status}</span></td>
+                    <td>R$ ${o.total.toFixed(2)}</td>
+                    <td>${o.endereco || '-'}</td>
+                    <td>${o.created_at ? new Date(o.created_at).toLocaleString('pt-BR') : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        // ===== UTILITIES =====
+        function formatRole(role) {
+            const roles = { 'owner': 'Dono', 'admin': 'Admin', 'operador': 'Operador' };
+            return roles[role] || role;
+        }
+
+        function getRoleBadge(role) {
+            const badges = { 'owner': 'warning', 'admin': 'info', 'operador': 'secondary' };
+            return badges[role] || 'secondary';
+        }
+
+        function getStatusBadge(status) {
+            const badges = { 'pending': 'warning', 'active': 'success', 'closed': 'secondary' };
+            return badges[status] || 'secondary';
+        }
+
+        function formatAction(action) {
+            const actions = {
+                'user_created': 'Usuário criado',
+                'user_updated': 'Usuário atualizado',
+                'user_deactivated': 'Usuário desativado',
+                'password_reset': 'Senha resetada',
+                'login': 'Login realizado'
+            };
+            return actions[action] || action;
+        }
+
+        function formatDateTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return date.toLocaleString('pt-BR');
+        }
+
+        function formatTime(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
+        }
+
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('current-time').textContent = now.toLocaleString('pt-BR');
+        }
+
+        // ===== INIT =====
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuth();
+            loadDashboard();
+            updateTime();
+            setInterval(updateTime, 1000);
+        });
+    </script>
+</body>
+</html>

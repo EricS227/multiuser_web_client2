@@ -303,14 +303,206 @@
             border-radius: 10px;
             font-size: 11px;
         }
+
+        /* Seções adicionais */
+        .section-content {
+            display: none;
+        }
+
+        .section-content.active {
+            display: block;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .data-table th, .data-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #666;
+        }
+
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge-success { background: #d4edda; color: #155724; }
+        .badge-danger { background: #f8d7da; color: #721c24; }
+        .badge-warning { background: #fff3cd; color: #856404; }
+        .badge-info { background: #cce5ff; color: #004085; }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+            margin: 2px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card-big {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .stat-card-big h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card-big .value {
+            font-size: 28px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-card-big .subvalue {
+            font-size: 12px;
+            color: #888;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .logout-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            padding: 10px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            z-index: 2000;
+        }
+
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Sidebar -->
-        <div class="sidebar">
+        <div class="sidebar" style="position: relative;">
             <div class="logo">Gas Express</div>
-            
+            <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-bottom: 20px;">Painel do Dono</div>
+
             <div class="menu-item active" onclick="showSection('pedidos')">
                 📦 Pedidos
             </div>
@@ -325,6 +517,9 @@
             </div>
             <div class="menu-item" onclick="showSection('relatorios')">
                 📊 Relatórios
+            </div>
+            <div class="menu-item" onclick="showSection('configuracoes')">
+                ⚙️ Configurações
             </div>
 
             <div class="stats-box">
@@ -342,6 +537,8 @@
                     <span class="stat-value" id="stat-faturamento">R$ 0</span>
                 </div>
             </div>
+
+            <div class="logout-btn" onclick="logout()">Sair</div>
         </div>
 
         <!-- Main Content -->
@@ -360,9 +557,142 @@
             </div>
 
             <!-- Mapa com Entregadores -->
-            <div class="map-section">
+            <div class="map-section section-content active" id="section-pedidos-map">
                 <h3>Entregadores em Tempo Real</h3>
                 <div id="map"></div>
+            </div>
+
+            <!-- Seção Entregadores -->
+            <div class="section-content" id="section-entregadores">
+                <div class="section-header">
+                    <h2 style="color: #667eea;">Gerenciar Entregadores</h2>
+                    <button class="btn btn-primary" onclick="openDriverModal()">+ Novo Entregador</button>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Telefone</th>
+                            <th>Veículo</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="drivers-table">
+                        <tr><td colspan="5">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Seção Clientes -->
+            <div class="section-content" id="section-clientes">
+                <div class="section-header">
+                    <h2 style="color: #667eea;">Clientes</h2>
+                    <div class="export-buttons">
+                        <button class="btn btn-success" onclick="exportCustomersCSV()">📥 Exportar CSV</button>
+                    </div>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Telefone</th>
+                            <th>Endereço</th>
+                            <th>Bairro</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customers-table">
+                        <tr><td colspan="5">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Seção Produtos -->
+            <div class="section-content" id="section-produtos">
+                <div class="section-header">
+                    <h2 style="color: #667eea;">Gerenciar Produtos</h2>
+                    <button class="btn btn-primary" onclick="openProductModal()">+ Novo Produto</button>
+                </div>
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nome</th>
+                            <th>Categoria</th>
+                            <th>Preço c/ Troca</th>
+                            <th>Preço s/ Troca</th>
+                            <th>Status</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="products-table">
+                        <tr><td colspan="6">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Seção Relatórios -->
+            <div class="section-content" id="section-relatorios">
+                <div class="section-header">
+                    <h2 style="color: #667eea;">Relatórios Financeiros</h2>
+                    <div class="export-buttons">
+                        <button class="btn btn-success" onclick="exportOrdersCSV()">📥 Exportar Pedidos CSV</button>
+                    </div>
+                </div>
+
+                <div class="stats-cards">
+                    <div class="stat-card-big">
+                        <h3>Faturamento Hoje</h3>
+                        <div class="value" id="report-today">R$ 0</div>
+                    </div>
+                    <div class="stat-card-big">
+                        <h3>Faturamento Semana</h3>
+                        <div class="value" id="report-week">R$ 0</div>
+                    </div>
+                    <div class="stat-card-big">
+                        <h3>Faturamento Mês</h3>
+                        <div class="value" id="report-month">R$ 0</div>
+                    </div>
+                    <div class="stat-card-big">
+                        <h3>Total de Pedidos</h3>
+                        <div class="value" id="report-orders-total">0</div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">Filtrar por Período</h3>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="date" id="report-start" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <span>até</span>
+                        <input type="date" id="report-end" style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <button class="btn btn-primary" onclick="loadFinancialReport()">Gerar</button>
+                    </div>
+                </div>
+
+                <div class="chart-container" id="detailed-report" style="display: none;">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">Detalhamento</h3>
+                    <div id="report-details"></div>
+                </div>
+            </div>
+
+            <!-- Seção Configurações -->
+            <div class="section-content" id="section-configuracoes">
+                <h2 style="color: #667eea; margin-bottom: 20px;">Configurações do Negócio</h2>
+
+                <div class="chart-container">
+                    <h3 style="margin-bottom: 15px;">WhatsApp (WAHA)</h3>
+                    <p>Status: <span id="waha-status">Verificando...</span></p>
+                    <div style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="checkWahaStatus()">Verificar Status</button>
+                        <button class="btn btn-success" onclick="startWahaSession()">Iniciar Sessão</button>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3 style="margin-bottom: 15px;">Informações do Sistema</h3>
+                    <p><strong>Versão:</strong> 1.0.0</p>
+                    <p><strong>Última atualização:</strong> Janeiro 2026</p>
+                </div>
             </div>
         </div>
 
@@ -393,10 +723,84 @@
         </div>
     </div>
 
+    <!-- Modal Entregador -->
+    <div class="modal-overlay" id="driver-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="driver-modal-title">Novo Entregador</h3>
+                <button class="modal-close" onclick="closeModal('driver-modal')">&times;</button>
+            </div>
+            <form onsubmit="saveDriver(event)">
+                <input type="hidden" id="driver-id">
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="driver-nome" required>
+                </div>
+                <div class="form-group">
+                    <label>Telefone</label>
+                    <input type="text" id="driver-telefone" required>
+                </div>
+                <div class="form-group">
+                    <label>Veículo</label>
+                    <input type="text" id="driver-veiculo" placeholder="Moto, Carro...">
+                </div>
+                <div class="form-group">
+                    <label>Placa</label>
+                    <input type="text" id="driver-placa">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn" style="background: #ccc;" onclick="closeModal('driver-modal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Produto -->
+    <div class="modal-overlay" id="product-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="product-modal-title">Novo Produto</h3>
+                <button class="modal-close" onclick="closeModal('product-modal')">&times;</button>
+            </div>
+            <form onsubmit="saveProduct(event)">
+                <input type="hidden" id="product-id">
+                <div class="form-group">
+                    <label>Nome</label>
+                    <input type="text" id="product-nome" required>
+                </div>
+                <div class="form-group">
+                    <label>Descrição</label>
+                    <input type="text" id="product-descricao">
+                </div>
+                <div class="form-group">
+                    <label>Categoria</label>
+                    <select id="product-categoria">
+                        <option value="gas">Gás</option>
+                        <option value="agua">Água</option>
+                        <option value="acessorio">Acessório</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Preço (com troca)</label>
+                    <input type="number" id="product-preco" step="0.01" required>
+                </div>
+                <div class="form-group">
+                    <label>Preço (sem troca)</label>
+                    <input type="number" id="product-preco-sem-troca" step="0.01">
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button type="button" class="btn" style="background: #ccc;" onclick="closeModal('product-modal')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         // ===== CONFIGURAÇÃO =====
-        const API_URL = 'http://localhost:8000';
+        const API_URL = window.location.origin;
         const WS_URL = 'ws://localhost:8000/ws';
         
         let token = localStorage.getItem('access_token');
@@ -782,16 +1186,427 @@
         }
 
         function showSection(section) {
-            // Implementar navegação entre seções
+            // Atualizar menu
             document.querySelectorAll('.menu-item').forEach(item => item.classList.remove('active'));
             event.target.classList.add('active');
+
+            // Mostrar/ocultar elementos baseado na seção
+            const ordersContainer = document.getElementById('orders-container');
+            const ordersMap = document.getElementById('section-pedidos-map');
+            const header = document.querySelector('.header h1');
+
+            // Ocultar todas as seções extras
+            document.querySelectorAll('.section-content').forEach(s => s.classList.remove('active'));
+
+            if (section === 'pedidos') {
+                ordersContainer.style.display = 'grid';
+                ordersMap.classList.add('active');
+                header.textContent = 'Pedidos';
+                loadOrders();
+            } else {
+                ordersContainer.style.display = 'none';
+                ordersMap.classList.remove('active');
+
+                const sectionEl = document.getElementById(`section-${section}`);
+                if (sectionEl) {
+                    sectionEl.classList.add('active');
+                }
+
+                switch (section) {
+                    case 'entregadores':
+                        header.textContent = 'Entregadores';
+                        loadDriversTable();
+                        break;
+                    case 'clientes':
+                        header.textContent = 'Clientes';
+                        loadCustomersTable();
+                        break;
+                    case 'produtos':
+                        header.textContent = 'Produtos';
+                        loadProductsTable();
+                        break;
+                    case 'relatorios':
+                        header.textContent = 'Relatórios Financeiros';
+                        loadOwnerStats();
+                        break;
+                    case 'configuracoes':
+                        header.textContent = 'Configurações';
+                        checkWahaStatus();
+                        break;
+                }
+            }
+        }
+
+        // ===== ENTREGADORES =====
+        let allDrivers = [];
+
+        async function loadDriversTable() {
+            try {
+                const res = await fetch(`${API_URL}/api/drivers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    allDrivers = await res.json();
+                    renderDriversTable(allDrivers);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar entregadores:', e);
+            }
+        }
+
+        function renderDriversTable(drivers) {
+            const tbody = document.getElementById('drivers-table');
+            if (drivers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">Nenhum entregador cadastrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = drivers.map(d => `
+                <tr>
+                    <td><strong>${d.nome}</strong></td>
+                    <td>${d.telefone}</td>
+                    <td>${d.veiculo || '-'}</td>
+                    <td>
+                        <span class="badge ${d.status === 'disponivel' ? 'badge-success' : 'badge-warning'}">
+                            ${d.status || 'offline'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editDriver(${d.id})">Editar</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteDriver(${d.id})">Remover</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openDriverModal() {
+            document.getElementById('driver-modal-title').textContent = 'Novo Entregador';
+            document.getElementById('driver-id').value = '';
+            document.getElementById('driver-nome').value = '';
+            document.getElementById('driver-telefone').value = '';
+            document.getElementById('driver-veiculo').value = '';
+            document.getElementById('driver-placa').value = '';
+            document.getElementById('driver-modal').classList.add('active');
+        }
+
+        function editDriver(driverId) {
+            const driver = allDrivers.find(d => d.id === driverId);
+            if (!driver) return;
+
+            document.getElementById('driver-modal-title').textContent = 'Editar Entregador';
+            document.getElementById('driver-id').value = driver.id;
+            document.getElementById('driver-nome').value = driver.nome;
+            document.getElementById('driver-telefone').value = driver.telefone;
+            document.getElementById('driver-veiculo').value = driver.veiculo || '';
+            document.getElementById('driver-placa').value = driver.placa || '';
+            document.getElementById('driver-modal').classList.add('active');
+        }
+
+        async function saveDriver(e) {
+            e.preventDefault();
+            const driverId = document.getElementById('driver-id').value;
+            const data = {
+                nome: document.getElementById('driver-nome').value,
+                telefone: document.getElementById('driver-telefone').value,
+                veiculo: document.getElementById('driver-veiculo').value,
+                placa: document.getElementById('driver-placa').value
+            };
+
+            try {
+                const url = driverId ? `${API_URL}/api/drivers/${driverId}` : `${API_URL}/api/drivers`;
+                const method = driverId ? 'PUT' : 'POST';
+
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showToast('Entregador salvo!', 'success');
+                    closeModal('driver-modal');
+                    loadDriversTable();
+                } else {
+                    showToast('Erro ao salvar', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao salvar', 'error');
+            }
+        }
+
+        async function deleteDriver(driverId) {
+            if (!confirm('Remover este entregador?')) return;
+
+            try {
+                const res = await fetch(`${API_URL}/api/drivers/${driverId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    showToast('Entregador removido', 'success');
+                    loadDriversTable();
+                }
+            } catch (e) {
+                showToast('Erro ao remover', 'error');
+            }
+        }
+
+        // ===== CLIENTES =====
+        async function loadCustomersTable() {
+            try {
+                const res = await fetch(`${API_URL}/api/customers`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const customers = await res.json();
+                    renderCustomersTable(customers);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar clientes:', e);
+            }
+        }
+
+        function renderCustomersTable(customers) {
+            const tbody = document.getElementById('customers-table');
+            if (customers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5">Nenhum cliente cadastrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = customers.map(c => `
+                <tr>
+                    <td><strong>${c.nome}</strong></td>
+                    <td>${c.telefone}</td>
+                    <td>${c.endereco || '-'}, ${c.numero || ''}</td>
+                    <td>${c.bairro || '-'}</td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="viewCustomer(${c.id})">Ver</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function viewCustomer(customerId) {
+            alert('Detalhes do cliente #' + customerId);
+        }
+
+        async function exportCustomersCSV() {
+            window.open(`${API_URL}/api/reports/export/customers?token=${token}`, '_blank');
+        }
+
+        // ===== PRODUTOS =====
+        let allProducts = [];
+
+        async function loadProductsTable() {
+            try {
+                const res = await fetch(`${API_URL}/api/products`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    allProducts = await res.json();
+                    renderProductsTable(allProducts);
+                }
+            } catch (e) {
+                console.error('Erro ao carregar produtos:', e);
+            }
+        }
+
+        function renderProductsTable(products) {
+            const tbody = document.getElementById('products-table');
+            if (products.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6">Nenhum produto cadastrado</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = products.map(p => `
+                <tr>
+                    <td><strong>${p.nome}</strong></td>
+                    <td><span class="badge badge-info">${p.categoria || 'gas'}</span></td>
+                    <td>R$ ${(p.preco || 0).toFixed(2)}</td>
+                    <td>R$ ${(p.preco_sem_troca || 0).toFixed(2)}</td>
+                    <td>
+                        <span class="badge ${p.ativo !== false ? 'badge-success' : 'badge-danger'}">
+                            ${p.ativo !== false ? 'Ativo' : 'Inativo'}
+                        </span>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-primary" onclick="editProduct(${p.id})">Editar</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openProductModal() {
+            document.getElementById('product-modal-title').textContent = 'Novo Produto';
+            document.getElementById('product-id').value = '';
+            document.getElementById('product-nome').value = '';
+            document.getElementById('product-descricao').value = '';
+            document.getElementById('product-categoria').value = 'gas';
+            document.getElementById('product-preco').value = '';
+            document.getElementById('product-preco-sem-troca').value = '';
+            document.getElementById('product-modal').classList.add('active');
+        }
+
+        function editProduct(productId) {
+            const product = allProducts.find(p => p.id === productId);
+            if (!product) return;
+
+            document.getElementById('product-modal-title').textContent = 'Editar Produto';
+            document.getElementById('product-id').value = product.id;
+            document.getElementById('product-nome').value = product.nome;
+            document.getElementById('product-descricao').value = product.descricao || '';
+            document.getElementById('product-categoria').value = product.categoria || 'gas';
+            document.getElementById('product-preco').value = product.preco;
+            document.getElementById('product-preco-sem-troca').value = product.preco_sem_troca || '';
+            document.getElementById('product-modal').classList.add('active');
+        }
+
+        async function saveProduct(e) {
+            e.preventDefault();
+            const productId = document.getElementById('product-id').value;
+            const data = {
+                nome: document.getElementById('product-nome').value,
+                descricao: document.getElementById('product-descricao').value,
+                categoria: document.getElementById('product-categoria').value,
+                preco: parseFloat(document.getElementById('product-preco').value),
+                preco_sem_troca: parseFloat(document.getElementById('product-preco-sem-troca').value) || null,
+                ativo: true
+            };
+
+            try {
+                const url = productId ? `${API_URL}/api/products/${productId}` : `${API_URL}/api/products`;
+                const method = productId ? 'PUT' : 'POST';
+
+                const res = await fetch(url, {
+                    method,
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+
+                if (res.ok) {
+                    showToast('Produto salvo!', 'success');
+                    closeModal('product-modal');
+                    loadProductsTable();
+                } else {
+                    showToast('Erro ao salvar', 'error');
+                }
+            } catch (e) {
+                showToast('Erro ao salvar', 'error');
+            }
+        }
+
+        // ===== RELATÓRIOS =====
+        async function loadOwnerStats() {
+            try {
+                const res = await fetch(`${API_URL}/owner/stats`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('report-today').textContent = `R$ ${data.revenue.today.toFixed(2)}`;
+                    document.getElementById('report-week').textContent = `R$ ${data.revenue.week.toFixed(2)}`;
+                    document.getElementById('report-month').textContent = `R$ ${data.revenue.month.toFixed(2)}`;
+                    document.getElementById('report-orders-total').textContent = data.orders.total;
+                }
+            } catch (e) {
+                console.error('Erro ao carregar estatísticas:', e);
+            }
+        }
+
+        async function loadFinancialReport() {
+            const startDate = document.getElementById('report-start').value;
+            const endDate = document.getElementById('report-end').value;
+
+            let url = `${API_URL}/api/reports/financial`;
+            const params = [];
+            if (startDate) params.push(`start_date=${startDate}`);
+            if (endDate) params.push(`end_date=${endDate}`);
+            if (params.length) url += '?' + params.join('&');
+
+            try {
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('detailed-report').style.display = 'block';
+                    document.getElementById('report-details').innerHTML = `
+                        <p><strong>Faturamento Total:</strong> R$ ${data.summary.total_revenue.toFixed(2)}</p>
+                        <p><strong>Faturamento Confirmado:</strong> R$ ${data.summary.completed_revenue.toFixed(2)}</p>
+                        <p><strong>Pedidos Entregues:</strong> ${data.summary.completed_orders}</p>
+                        <p><strong>Ticket Médio:</strong> R$ ${data.summary.average_ticket.toFixed(2)}</p>
+                    `;
+                }
+            } catch (e) {
+                console.error('Erro ao carregar relatório:', e);
+            }
+        }
+
+        async function exportOrdersCSV() {
+            const startDate = document.getElementById('report-start').value || '';
+            const endDate = document.getElementById('report-end').value || '';
+            window.open(`${API_URL}/api/reports/export/orders?start_date=${startDate}&end_date=${endDate}`, '_blank');
+        }
+
+        // ===== CONFIGURAÇÕES / WAHA =====
+        async function checkWahaStatus() {
+            try {
+                const res = await fetch(`${API_URL}/api/waha/status`);
+                const data = await res.json();
+                document.getElementById('waha-status').textContent = data.enabled ? 'Habilitado' : 'Desabilitado';
+            } catch (e) {
+                document.getElementById('waha-status').textContent = 'Erro ao verificar';
+            }
+        }
+
+        async function startWahaSession() {
+            try {
+                const res = await fetch(`${API_URL}/api/waha/start-session`, { method: 'POST' });
+                if (res.ok) {
+                    showToast('Sessão iniciada!', 'success');
+                    checkWahaStatus();
+                }
+            } catch (e) {
+                showToast('Erro ao iniciar sessão', 'error');
+            }
+        }
+
+        // ===== UTILITÁRIOS =====
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
+        }
+
+        function showToast(message, type) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = 'login.html';
         }
 
         // ===== INICIALIZAÇÃO =====
         document.addEventListener('DOMContentLoaded', () => {
             // Verificar autenticação
             if (!token) {
-                window.location.href = '/index.html';
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Verificar se é owner
+            const user = JSON.parse(localStorage.getItem('user') || '{}');
+            if (user.role !== 'owner') {
+                window.location.href = 'acesso_negado.html?required=owner';
                 return;
             }
 
