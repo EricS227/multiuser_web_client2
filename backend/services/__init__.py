@@ -1,17 +1,59 @@
 """
-Services do Sistema de Entregas
+Models do Sistema
 """
 
-from backend.services.customer_service import CustomerService
-from backend.services.order_service import OrderService
-from backend.services.delivery_service import DeliveryService
-from backend.services.driver_service import DriverService
-from backend.services.product_service import ProductService
+# Base models (chat, users, etc)
+from backend.models.base_models import (
+    User,
+    Conversation,
+    Message,
+    AuditLog,
+    BotInteraction,
+    BotContext,
+    Usuario,
+    brazilian_now,
+    BRAZIL_TZ,
+)
+
+# Delivery system models
+from backend.models.delivery_models import (
+    # Enums
+    OrderStatus,
+    PaymentMethod,
+    PaymentStatus,
+    DriverStatus,
+    # Models
+    Customer,
+    Product,
+    Driver,
+    Order,
+    OrderItem,
+    Delivery,
+    DeliveryHistory,
+)
 
 __all__ = [
-    "CustomerService",
-    "OrderService",
-    "DeliveryService",
-    "DriverService",
-    "ProductService",
+    # Base
+    "User",
+    "Conversation",
+    "Message",
+    "AuditLog",
+    "BotInteraction",
+    "BotContext",
+    "Usuario",
+    "brazilian_now",
+    "BRAZIL_TZ",
+    # Delivery Enums
+    "OrderStatus",
+    "PaymentMethod",
+    "PaymentStatus",
+    "DriverStatus",
+    # Delivery Models
+    "Customer",
+    "Product",
+    "Driver",
+    "Order",
+    "OrderItem",
+    "Delivery",
+    "DeliveryHistory",
 ]
