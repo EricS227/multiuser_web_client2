@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Atendimento Multiusuário</title>
+    <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+    <header>
+        Cliente Web de Atendimento
+    </header>
+
+    <div class="container" id="app">
+        <!-- Login -->
+        <div class="login-form" id="login-section">
+            <h2>Login</h2>
+            <input type="email" id="email" placeholder="Email" />
+            <input type="password" id="password" placeholder="Senha" />
+            <button onclick="login()">Entrar</button>
+            <br><br>
+            
+            <button onclick="window.location.href='/'">Cadastrar</button>
+        </div>
+
+    </div>
+
+    <script>
+        let token = localStorage.getItem("access_token") || "";
+
+        // Se já estiver autenticado, redireciona para clientui.html
+        if (token) {
+            window.location.href = "clientui.html";
+        }
+
+        async function login() {
+            const button = document.querySelector("button");
+            button.disabled = true;
+            button.textContent = "Entrando...";
+
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+
+            if (!email || !password) {
+                alert("Preencha o e-mail e a senha.");
+                button.disabled = false;
+                button.textContent = "Entrar";
+                return;
+            }
+
+            try {
+                const res = await fetch("/login", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: `username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`
+                });
+            
+                if (!res.ok) {
+                    alert("Email ou senha inválidos");
+                    button.disabled = false;
+                    button.textContent = "Entrar";
+                    return;
+                }
+
+                const data = await res.json();
+                if (data.access_token) {
+                    localStorage.setItem("access_token", data.access_token);
+                    window.location.href = "clientui.html";
+                } else {
+                    alert("Erro ao autenticar.");
+                    button.disabled = false;
+                    button.textContent = "Entrar";
+                }
+            } catch (error) {
+                console.error("Erro na requisição:", error);
+                alert("Erro ao se conectar ao servidor");
+                button.disabled = false;
+                button.textContent = "Entrar";
+            }
+        }
+    </script>
+</body>
+</html>

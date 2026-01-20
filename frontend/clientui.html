@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Painel de Operador</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f1f2f7;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background-color: #4338ca;
+      color: white;
+      padding: 1rem;
+      text-align: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    main {
+      display: flex;
+      gap: 1rem;
+      padding: 1rem;
+      height: 100%;
+    }
+    section {
+      overflow-y: auto;
+      padding: 1rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+    }
+
+    section:nth-child(1),
+    section:nth-child(2) {
+      flex: 0 0 300px;
+    }
+
+    section:nth-child(3) {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .conversation {
+      background: white;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    .conversation:hover {
+      background: #e8eaf6;
+    }
+
+    .assign-btn, button {
+      background-color: #4338ca;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    .assign-btn:hover, button:hover {
+      background-color: #388e3c;
+    }
+
+    #chat {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    #chat-messages {
+      flex: 1;
+      background-color: #fff;
+      padding: 1rem;
+      border-radius: 8px;
+      overflow-y: auto;
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .message {
+      max-width: 70%;
+      margin: 5px 0;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      border-radius: 12px;
+      word-wrap: break-word;
+      position: relative;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    }
+
+
+
+    .message.customer {
+      align-self: flex-start;
+      background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+      border-radius: 18px 18px 18px 4px;
+      margin-right: auto;
+    }
+
+    .message.agent {
+      align-self: flex-end;
+      background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+      border-radius: 18px 18px 4px 18px;
+      margin-left: auto;
+      border-left: none;
+      border-right: 3px solid #2196f3;
+    }
+
+    .message.bot {
+      align-self: flex-start;
+      background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+      border-left: 4px solid #4caf50;
+      border-radius: 18px 18px 18px 4px;
+      margin-right: auto;
+    }
+
+    .message-content-wrapper {
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .message-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+
+    .message-text {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #212121;
+      word-break: break-word;
+    }
+
+    .message-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 4px;
+      gap: 8px;
+    }
+
+    .message-timestamp {
+      font-size: 11px;
+      color: #757575;
+      font-weight: 400;
+    }
+
+    .message-status {
+      font-size: 12px;
+      color: #757575;
+    }
+
+    .message:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      transform: translateY(-1px);
+      transition: all 0.2s ease;
+    }
+
+
+    .sender-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: #424242;
+    }
+
+    .bot-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .bot-badge.claude {
+    background: #9c27b0;
+    color: white;
+    }
+
+  .bot-badge.ollama {
+    background: #ff9800;
+    color: white;
+  }
+
+  .bot-badge.fallback {
+    background: #607d8b;
+    color: white;
+  }
+
+    .message.bot .sender {
+      color: #2e7d32;
+    }
+
+    .bot-indicator {
+      font-size: 12px;
+      color: #4caf50;
+      font-weight: bold;
+      margin-right: 5px;
+    }
+
+    .escalation-indicator {
+      background-color: #fff3e0;
+      border-left: 3px solid #ff9800;
+      color: #e65100;
+      font-size: 12px;
+      padding: 5px;
+      margin: 5px 0;
+      border-radius: 4px;
+    }
+
+    .chat-input {
+      display: flex;
+      gap: 10px;
+    }
+
+    .chat-input input {
+      flex: 1;
+      padding: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    .conversation.active {
+      background: #c5cae9 !important;
+      border-left: 4px solid #3f51b5;
+    }
+
+    .conversation p {
+      margin: 4px 0;
+      font-size: 0.9em;
+    }
+    .conversation small {
+      font-size: 0.8em;
+      color: #555;
+    }
+
+    /* Filter Section Styling */
+    .filter-section {
+      background-color: #f8f9fa;
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1rem;
+      border: 1px solid #e9ecef;
+    }
+
+    .filter-section label {
+      font-weight: 600;
+      color: grey;
+      margin-right: 0.5rem;
+      font-size: 0.9rem;
+    }
+
+    .filter-select {
+      background-color: white;
+      border: 2px solid #dee2e6;
+      border-radius: 5px;
+      padding: 0.5rem;
+      font-size: 0.9rem;
+      color: grey;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      min-width: 120px;
+    }
+
+    .filter-select:hover {
+      border-color: #4338ca;
+    }
+
+    .filter-select:focus {
+      outline: none;
+      border-color: #4338ca;
+      box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.2);
+    }
+
+    .clear-filter-btn {
+      background-color: #4338ca;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      margin-left: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .clear-filter-btn:hover {
+      background-color: #5a6268;
+      transform: translateY(-1px);
+    }
+
+    .filter-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    /* Pedidos Section */
+    .orders-panel {
+      position: fixed;
+      top: 60px;
+      right: 20px;
+      width: 320px;
+      max-height: 400px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      z-index: 1000;
+      overflow: hidden;
+      display: none;
+    }
+
+    .orders-panel.show {
+      display: block;
+    }
+
+    .orders-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 15px;
+      font-weight: bold;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .orders-header .close-btn {
+      background: none;
+      border: none;
+      color: white;
+      font-size: 20px;
+      cursor: pointer;
+    }
+
+    .orders-list {
+      max-height: 340px;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .order-card-mini {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      border-left: 4px solid #667eea;
+    }
+
+    .order-card-mini.novo { border-left-color: #ffc107; }
+    .order-card-mini.confirmado { border-left-color: #17a2b8; }
+    .order-card-mini.saiu_entrega { border-left-color: #28a745; }
+
+    .order-card-mini h4 {
+      margin: 0 0 8px 0;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .order-card-mini p {
+      margin: 4px 0;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .order-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #667eea;
+      color: white;
+    }
+
+    .orders-toggle {
+      position: fixed;
+      top: 70px;
+      right: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 20px;
+      cursor: pointer;
+      z-index: 999;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .orders-toggle .badge {
+      background: #ff4757;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    .orders-toggle.has-orders {
+      animation: pulse 2s infinite;
+    }
+  </style>
+</head>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<body>
+  <header>
+    <h1>Painel do Operador</h1>
+  </header>
+  <main>
+    <section>
+      <h2>Conversas disponíveis</h2>
+      <div class="filter-section">
+        <div class="filter-controls">
+          <label for="conversation-filter">Filtro:</label>
+          <select id="conversation-filter" class="filter-select" onchange="filterConversations()">
+            <option value="all">📋 Todas</option>
+            <option value="active">🟢 Ativas</option>
+            <option value="escalated">🔥 Escaladas</option>
+          </select>
+          <button onclick="clearFilter()" class="clear-filter-btn">
+            🔄 Limpar
+          </button>
+        </div>
+      </div>
+      <div id="all-conversations"></div>
+      <div id="bot-interactions" style="display:none;">
+        <h4>Interações Bot</h4>
+        <div id="bot-interactions-list"></div>
+      </div>
+    </section>
+    <section>
+      <h2>Minhas conversas</h2>
+      <div id="my-conversations"></div>
+    </section>
+    <section>
+      <h2>Chat</h2>
+      <div id="chat">
+        <div id="chat-messages"></div>
+        <div class="chat-input">
+            <input type="text" id="message-input" placeholder="Digite sua mensagem...">
+            <button id="send-button" onclick="sendMessage()">Enviar</button>
+            <button onclick="endConversation()">Encerrar</button>
+            <button onclick="criarConversaTeste()">Criar conversa teste</button>
+            <a href="dashboard.html" style="position: absolute; top: 10px; right: 90px; background-color: #667eea; color: white; padding: 0.5rem 1rem; border-radius: 5px; text-decoration: none; font-weight: 600;">
+              📊 Dashboard
+            </a>
+            <button id="logout" onclick="logout()" style="position: absolute; top: 10px; right: 10px;">
+              Logout
+            </button>
+        </div>
+      </div>
+    </section>
+    
+  </main>
+
+  <!-- Botão de Pedidos -->
+  <button class="orders-toggle" onclick="toggleOrders()">
+    📦 Pedidos <span class="badge" id="orders-count">0</span>
+  </button>
+
+  <!-- Painel de Pedidos -->
+  <div class="orders-panel" id="orders-panel">
+    <div class="orders-header">
+      📦 Pedidos Pendentes
+      <button class="close-btn" onclick="toggleOrders()">&times;</button>
+    </div>
+    <div class="orders-list" id="orders-list">
+      <p style="color: #999; text-align: center;">Carregando...</p>
+    </div>
+  </div>
+
+  <script>
+    let token = localStorage.getItem("access_token");
+    let currentConversationId = null;
+    let ws = null;
+    //const timeStr = formatDate(m.timestamp);
+
+    if (!token) {
+      showError("Token ausente. Faça login novamente.");
+      window.location.href = "index.html";
+    }
+
+    // Conecta ao WebSocket com o token
+    function connectWebSocket() {
+      const token = localStorage.getItem("access_token");
+      if (!token) return;
+
+      ws = new WebSocket(`ws://${window.location.host}/ws?token=${token}`);
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("WebSocket message received:", JSON.stringify(data, null, 2));
+
+        // Novo pedido - mostrar notificação
+        if (data.type === 'new_order') {
+          showOrderNotification(data.order);
+          loadOrders();
+          return;
+        }
+
+        // Atualização de pedido
+        if (data.type === 'order_update') {
+          console.log('Pedido atualizado:', data);
+          loadOrders();
+          return;
+        }
+
+        if (!data.conversation_id || data.conversation_id !== currentConversationId) {
+          console.log("Message filtered out - conversation mismatch:", data.conversation_id, "vs", currentConversationId);
+          return;
+        }
+        {
+          const chat = document.getElementById("chat-messages");
+          const time = data.timestamp ? new Date(data.timestamp) : new Date();
+          const timeStr = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          let msgClass = "message";
+          let senderDisplay = data.sender;
+
+          if (data.message_type === "bot" || data.sender === "bot") {
+            console.log("Bot message detected:", data);
+            msgClass = "message bot";
+            senderDisplay = "Bot";
+          } else if (data.message_type === "agent" || data.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "Atendente";
+          } else if (data.message_type === "customer" || data.sender === "customer") {
+            msgClass = "message";
+            senderDisplay = "Cliente";
+          } else if (data.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "Atendente";
+          }
+
+          let botBadgeHTML = '';
+          if ((data.message_type === "bot" || data.sender === "bot") && data.bot_service) {
+            const badgeClass = data.bot_service.toLowerCase();
+            botBadgeHTML = `<span class="bot-badge ${badgeClass}">${data.bot_service}</span>`;
+          }
+
+          const messageDiv = document.createElement("div");
+          messageDiv.className = msgClass;
+          const messageContent = data.message || data.content || '';
+          messageDiv.innerHTML = `
+          <div class="message-content-wrapper">
+            <div class="message-header">
+              <span class="sender-name">${senderDisplay}</span>
+              ${botBadgeHTML}
+            </div>
+            <div class="message-text">${messageContent}</div>
+            <div class="message-footer">
+              <span class="message-timestamp">${timeStr}</span>
+            </div>
+          </div>
+          `;
+          
+          chat.appendChild(messageDiv);
+
+          removeMensagensDuplicadas();
+          chat.scrollTop = chat.scrollHeight;
+
+        }
+      };
+
+      ws.onerror = () => {
+        console.error("Erro no WebSocket. Verifique se o token é válido.");
+      };
+    }
+
+    // Notificação de novo pedido
+    function showOrderNotification(order) {
+      // Som de notificação
+      try {
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkZiYl5eSjImEf35/goeMkZaZmpmYlZGNiYWBf4CGi5CUl5mZmJaSkY2JhYKAg4iNkpWYmZiWk5CL');
+        audio.volume = 0.3;
+        audio.play().catch(() => {});
+      } catch(e) {}
+
+      // Notificação do navegador
+      if (Notification.permission === 'granted') {
+        new Notification('Novo Pedido!', {
+          body: `#${order.id} - ${order.customer_name}\nR$ ${order.total.toFixed(2)}`,
+          icon: '/static/icon.png'
+        });
+      }
+
+      // Toast na tela
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed; top: 20px; right: 20px; z-index: 9999;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white; padding: 15px 25px; border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease;
+      `;
+      toast.innerHTML = `
+        <strong>Novo Pedido #${order.id}</strong><br>
+        ${order.customer_name}<br>
+        <small>${order.endereco_entrega}, ${order.bairro_entrega}</small><br>
+        <strong>R$ ${order.total.toFixed(2)}</strong>
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 5000);
+    }
+
+    // ===== PEDIDOS =====
+    function toggleOrders() {
+      const panel = document.getElementById('orders-panel');
+      panel.classList.toggle('show');
+      if (panel.classList.contains('show')) {
+        loadOrders();
+      }
+    }
+
+    async function loadOrders() {
+      try {
+        const response = await fetch('/api/orders/pending', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (response.ok) {
+          const orders = await response.json();
+          renderOrders(orders);
+          updateOrdersCount(orders.length);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar pedidos:', error);
+      }
+    }
+
+    function renderOrders(orders) {
+      const container = document.getElementById('orders-list');
+
+      if (orders.length === 0) {
+        container.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">Nenhum pedido pendente</p>';
+        return;
+      }
+
+      container.innerHTML = orders.map(order => `
+        <div class="order-card-mini ${order.status}">
+          <h4>
+            Pedido #${order.id}
+            <span class="order-badge">${order.status.toUpperCase()}</span>
+          </h4>
+          <p><strong>${order.endereco_entrega}, ${order.numero_entrega}</strong></p>
+          <p>${order.bairro_entrega}</p>
+          <p style="color: #667eea; font-weight: bold;">R$ ${order.total.toFixed(2)}</p>
+        </div>
+      `).join('');
+    }
+
+    function updateOrdersCount(count) {
+      const badge = document.getElementById('orders-count');
+      const toggle = document.querySelector('.orders-toggle');
+      badge.textContent = count;
+
+      if (count > 0) {
+        toggle.classList.add('has-orders');
+      } else {
+        toggle.classList.remove('has-orders');
+      }
+    }
+
+    function highlightSelected(conversationId) {
+      document.querySelectorAll(".conversation").forEach(div => {
+        if (parseInt(div.dataset.id) === conversationId) {
+          div.classList.add("active");
+        } else {
+          div.classList.remove("active");
+        }
+      });
+    }
+
+    async function fetchMyConversations() {
+      try {
+        const res = await fetch("/my-conversations", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          showError("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+    
+
+        const myData = await res.json();
+
+        const activeConversations = myData.filter(c => c.status === "pending");
+        
+        document.getElementById("my-conversations").innerHTML = myData.map(c => `
+          <div class="conversation" onclick="loadChat(${c.id})">
+            <p><strong>Nome:</strong> ${c.name ?? '(Sem nome)'}</p>
+            <p><strong>Número:</strong> ${c.customer_number}</p>
+            <p><strong>Status:</strong> ${c.status}</p>
+            <small>Iniciado em: ${new Date(c.created_at).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}</small>
+          </div>
+        `).join("");
+        
+        removeMensagensDuplicadas();
+      } catch (error) {
+        console.error("Erro ao carregar minhas conversas:", error);
+      }
+    }
+
+    async function fetchAllConversations() {
+      try {
+        const res = await fetch("/conversations", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          showError("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById("all-conversations").innerHTML = data
+          .filter(c => c.status === "pending")
+          .map(c => `
+            <div class="conversation" data-id="${c.id}" onclick="loadChat(${c.id})">
+              <p><strong>Nome:</strong> ${c.name ?? '(Sem nome)'}</p>
+              <p><strong>Número:</strong> ${c.customer_number}</p>
+              <p><strong>Status:</strong> ${c.status}</p>
+            </div>
+          `).join("");
+      } catch (error) {
+        console.error("Erro ao carregar todas as conversas:", error);
+      }
+    }
+
+    async function loadChat(conversationId) {
+      if (currentConversationId !== conversationId) {
+        currentConversationId = conversationId;
+
+        // Atribui a conversa
+        const assignRes = await fetch(`/conversations/${conversationId}/assign`, {
+          method: "POST",
+          headers: { Authorization:`Bearer ${token}`  }
+        });
+
+        if (!assignRes.ok) {
+          console.error("Erro ao atribuir conversa:", assignRes.status);
+          showError("Erro ao atribuir conversa.");
+          return;
+        }
+
+        // Atualiza lista após atribuição
+        fetchMyConversations();
+        fetchAllConversations();
+      }
+
+
+      highlightSelected(conversationId);
+
+      try {
+        const res = await fetch(`/conversations/${conversationId}/messages`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const messages = await res.json();
+        const chat = document.getElementById("chat-messages");
+
+        chat.innerHTML = messages.map(m => {
+          let msgClass = "message";
+          let senderDisplay = m.sender;
+          let botIndicator = "";
+
+          if (m.message_type === "bot" || m.sender === "bot") {
+            msgClass = "message bot";
+            senderDisplay = "Bot";
+            if (m.bot_service) {
+              botIndicator = `<span class="bot-indicator">[${m.bot_service}]</span>`;
+            }
+          } else if (m.message_type === "agent" || m.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "Atendente";
+          } else if (m.message_type === "customer" || m.sender === "customer") {
+            msgClass = "message";
+            senderDisplay = "Cliente";
+          } else if (m.sender === "agent") {
+            msgClass = "message agent";
+            senderDisplay = "Atendente";
+          }
+          
+          let botBadgeHTML = '';
+          if (m.message_type === "bot" && m.bot_service) {
+            const badgeClass = m.bot_service.toLowerCase();
+            botBadgeHTML =  `<span class="bot-badge ${badgeClass}">${m.bot_service}</span>`;
+          }
+
+          const timeStr = new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          return `
+            <div class="${msgClass}">
+              <div class="message-content-wrapper">
+                <div class="message-header">
+                  <span class="sender-name">${senderDisplay}</span>
+                  ${botBadgeHTML}
+                </div>
+                <div class="message-text">${m.content}</div>
+                <div class="message-footer">
+                  <span class="message-timestamp">${timeStr}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+
+        removeMensagensDuplicadas();
+
+        chat.scrollTop = chat.scrollHeight;
+      } catch (error) {
+        console.error("Erro ao carregar mensagens:", error);
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem("access_token");
+      window.location.href = "index.html";
+    }
+
+    let isSending = false;
+
+
+    async function sendMessage() {
+      if (isSending) return;
+      isSending = true;
+
+      console.log("sendMessage Chamada");
+
+      const input = document.getElementById("message-input");
+      const content = input.value.trim();
+
+      if (!content || !currentConversationId) {
+        console.warn("Mensagem vazia ou conversa não selecionada");
+        isSending = false;
+        return;
+      }
+
+      input.disabled = true;
+      const sendButton = document.querySelector('button[onclick="sendMessage()"]');
+      if (sendButton) sendButton.disabled = true;
+
+      try {
+        const res = await fetch(`/conversations/${currentConversationId}/reply`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ message: content })
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error("Erro na resposta da API:", res.status, await res.text());
+          showError("Erro ao enviar mensagem: " + errorText);
+          return;
+        }
+
+        const chat = document.getElementById("chat-messages");
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        const messageDiv = document.createElement("div");
+        messageDiv.className = "message agent";
+        messageDiv.innerHTML = `
+        <div class="message-content-wrapper">
+          <div class="message-header">
+            <span class="sender-name">Você</span>
+          </div>
+          <div class="message-text">${content}</div>
+          <div class="message-footer">
+            <span class="message-timestamp">${timeStr}</span>
+          </div>
+        </div>
+        `
+        chat.appendChild(messageDiv);
+        
+        chat.scrollTop = chat.scrollHeight;
+        input.value = "";
+
+        highlightSelected(currentConversationId)
+      } catch (error) {
+        console.error("Erro ao enviar mensagem:", error);
+        showError("Erro ao enviar mensagem", error);
+      } finally {
+        isSending = false;
+        input.disabled = false;
+        if (sendButton) sendButton.disabled = false;
+      }
+    }
+
+
+    async function endConversation() {
+      console.log("endConversation called", {currentConversationId});
+      if (!currentConversationId) {
+        showError("Nenhuma conversa selecionada para encerrar.");
+        return;
+      }
+
+      try {
+        console.log("Enviando requisição para encerrar conversa:", currentConversationId);
+
+        const res = await fetch(`/conversations/${currentConversationId}/end`, {
+          method: "POST",
+          headers: {Authorization:  `Bearer ${token}`, "Content-Type": "application/json"},
+        });
+
+        console.log("Resposta recebida:", res.status);
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error("Erro na resposta da API:", res.status, errorText);
+          showError("Erro ao encerrar conversa: " + res.status + " - " + errorText);
+          return;
+        }
+
+        const result = await res.json();
+        console.log("Conversa encerrada com sucesso:", result);
+
+        showToast("Conversa encerrada com sucesso.");
+        document.getElementById("chat-messages").innerHTML = "";
+        currentConversationId = null;
+        fetchMyConversations();
+        }  catch (error) {
+        console.error("Erro ao encerrar conversa:", error);
+        showError("Erro de conexão: " + error.message);
+      }
+    }
+
+
+    function removeMensagensDuplicadas() {
+      const chat = document.getElementById("chat-messages");
+      const seen = new Set();
+      const messages = Array.from(chat.children);
+      const toRemove = [];
+
+      messages.forEach(msg => {
+        const senderElem = msg.querySelector(".sender");
+        if (!senderElem) return;
+
+        const fullText = senderElem.innerText.trim();
+
+        const messageText = fullText.includes(":") ? fullText.split(":").slice(1).join(":").trim() : fullText;
+
+        const key = messageText;
+
+        if (seen.has(key)) {
+          toRemove.push(msg);
+        } else {
+          seen.add(key);
+        }
+      });
+
+      toRemove.forEach(msg => msg.remove());
+    }
+
+
+    function formatDate(isoDateStr) {
+      try {
+        if (!isoDateStr) return "Data Inválida";
+        const date = new Date(isoDateStr);
+        if (isNaN(date)) return "Data Inválida";
+        return date.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
+      } catch {
+        return "Data inválida";
+      }
+    }
+    
+    async function criarConversaTeste() {
+      try {
+        const res = await fetch("/conversations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            customer_number: "+554196950370",  // Use your real WhatsApp number
+            initial_message: "Olá, isso é um teste automático"
+          })
+        });
+
+        if (!res.ok) {
+          console.error("Erro ao criar conversa de teste:", await res.text());
+          return;
+        }
+
+        showToast("Conversa teste criada");
+        fetchAllConversations();
+        fetchMyConversations();
+        } catch (error) {
+          console.error("Erro ao criar conversa de teste:", error);
+        }
+      }
+
+
+      document.getElementById("message-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+
+      function showSuccess(message) {
+        Swal.fire({
+          icon: 'success',
+          title: message,
+          showConfirmButton: false,
+          timer: 2000
+        });
+      }
+
+      function showError(message) {
+        Swal.fire({
+          icon:'error',
+          title: 'Erro',
+          text: message
+        });
+      }
+
+      function showToast(message, type="success") {
+        Swal.fire({
+          toast: true,
+          position: 'top-end',
+          icon: type,
+          title: message,
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true
+        });
+      }
+
+    
+
+    // Add clearFilter function  
+    function clearFilter() {
+      document.getElementById('conversation-filter').value = 'all';
+      fetchAllConversations();
+    }
+
+    // Inicialização
+    connectWebSocket();
+    fetchMyConversations();
+    loadOrders();
+    setInterval(loadOrders, 30000); // Atualiza pedidos a cada 30s
+    // Enhanced conversation filtering functions
+    async function fetchBotInteractions() {
+      try {
+        const res = await fetch("/bot-interactions", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401) {
+          showError("Sessão expirada. Faça login novamente.");
+          localStorage.removeItem("access_token");
+          window.location.href = "index.html";
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById("bot-interactions-list").innerHTML = data
+          .map(interaction => `
+            <div class="conversation">
+              <div><strong>${interaction.customer_name}</strong></div>
+              <div><small>${interaction.phone_number}</small></div>
+              <div>Pergunta: ${interaction.user_message}</div>
+              <div style="color: #2e7d32;">Bot: ${interaction.bot_response.substring(0, 100)}...</div>
+              <div><small>Bot: ${interaction.bot_type} | ${new Date(interaction.timestamp).toLocaleString()}</small></div>
+            </div>
+          `).join("");
+      } catch (error) {
+        console.error("Erro:", error);
+        document.getElementById("bot-interactions-list").innerHTML = "<p>Erro ao carregar interações bot</p>";
+      }
+    }
+
+    async function filterConversations() {
+      const filterType = document.getElementById('conversation-filter').value;
+      
+      if (filterType === 'bot_only') {
+        // Show bot interactions section
+        document.getElementById('all-conversations').style.display = 'none';
+        document.getElementById('bot-interactions').style.display = 'block';
+        fetchBotInteractions();
+      } else {
+        // Show regular conversations with filter
+        document.getElementById('all-conversations').style.display = 'block';
+        document.getElementById('bot-interactions').style.display = 'none';
+        
+        try {
+          const res = await fetch(`/conversations?filter_type=${filterType}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (res.status === 401) {
+            showError("Sessão expirada. Faça login novamente.");
+            localStorage.removeItem("access_token");
+            window.location.href = "index.html";
+            return;
+          }
+
+          const data = await res.json();
+          document.getElementById("all-conversations").innerHTML = data
+            .map(c => `
+              <div class="conversation" onclick="loadChat(${c.id})">
+                <div><strong>${c.name || c.customer_number}</strong></div>
+                <div>Status: ${c.status}</div>
+                <div><small>Criado: ${new Date(c.created_at).toLocaleString()}</small></div>
+              </div>
+            `).join("");
+        } catch (error) {
+          console.error("Erro:", error);
+          document.getElementById("all-conversations").innerHTML = "<p>Erro ao carregar conversas</p>";
+        }
+      }
+    }
+
+    fetchAllConversations();
+  </script>
+
+</body>
+</html>

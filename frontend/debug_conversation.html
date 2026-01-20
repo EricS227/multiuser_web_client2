@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Conversation Messages</title>
+    <style>
+        .message {
+            max-width: 70%;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 15px;
+            word-wrap: break-word;
+            background-color: #f0f0f0;
+        }
+
+        .message.agent {
+            align-self: flex-end;
+            background-color: #e1f5fe;
+            border-bottom-left-radius: 0;
+        }
+
+        .message.bot {
+            align-self: flex-start;
+            background-color: #e8f5e8;
+            border-bottom-right-radius: 0;
+            border-left: 3px solid #4caf50;
+        }
+
+        .message.bot .sender {
+            color: #2e7d32;
+        }
+
+        .bot-indicator {
+            font-size: 12px;
+            color: #4caf50;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        pre {
+            background: #f0f0f0;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h2>Debug: Conversation 9 Messages</h2>
+    
+    <div>
+        <h3>1. Login First</h3>
+        <button onclick="login()">Login as Admin</button>
+        <div id="login-result"></div>
+    </div>
+    
+    <div>
+        <h3>2. Fetch Messages</h3>
+        <button onclick="fetchMessages()">Fetch Conversation 9 Messages</button>
+        <pre id="raw-data"></pre>
+    </div>
+    
+    <div>
+        <h3>3. Rendered Messages</h3>
+        <div class="container" id="messages"></div>
+    </div>
+
+    <script>
+        let authToken = '';
+
+        async function login() {
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'username=admin@test.com&password=senha123'
+                });
+                
+                const data = await response.json();
+                if (data.access_token) {
+                    authToken = data.access_token;
+                    document.getElementById('login-result').innerHTML = '<span style="color: green;">✅ Login successful!</span>';
+                } else {
+                    document.getElementById('login-result').innerHTML = '<span style="color: red;">❌ Login failed</span>';
+                }
+            } catch (error) {
+                document.getElementById('login-result').innerHTML = '<span style="color: red;">❌ Error: ' + error + '</span>';
+            }
+        }
+
+        async function fetchMessages() {
+            if (!authToken) {
+                alert('Please login first');
+                return;
+            }
+
+            try {
+                const response = await fetch('/conversations/9/messages', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+                
+                const messages = await response.json();
+                
+                // Show raw data
+                document.getElementById('raw-data').textContent = JSON.stringify(messages, null, 2);
+                
+                // Render messages
+                renderMessages(messages);
+                
+            } catch (error) {
+                document.getElementById('raw-data').textContent = 'Error: ' + error;
+            }
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('messages');
+            container.innerHTML = '';
+            
+            messages.forEach(m => {
+                let msgClass = "message";
+                let senderDisplay = m.sender;
+                let botIndicator = "";
+
+                console.log('Processing message:', m);
+
+                if (m.message_type === "bot" || m.sender === "bot") {
+                    msgClass = "message bot";
+                    senderDisplay = "Bot";
+                    if (m.bot_service) {
+                        botIndicator = `<span class="bot-indicator">[${m.bot_service}]</span>`;
+                    }
+                    console.log('Bot message detected, class:', msgClass);
+                } else if (m.message_type === "agent" || m.sender === "agent") {
+                    msgClass = "message agent";
+                    senderDisplay = "Atendente";
+                } else if (m.message_type === "customer" || m.sender === "customer") {
+                    msgClass = "message";
+                    senderDisplay = "Cliente";
+                }
+
+                const messageDiv = document.createElement("div");
+                messageDiv.className = msgClass;
+                messageDiv.innerHTML = `
+                    <span class="sender"><strong>${botIndicator}${senderDisplay}:</strong> ${m.content}</span><br>
+                    <small style="font-size: 10px; color: gray;">ID: ${m.id}, Type: ${m.message_type}, Service: ${m.bot_service}</small>
+                `;
+                
+                container.appendChild(messageDiv);
+            });
+        }
+    </script>
+</body>
+</html>

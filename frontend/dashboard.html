@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Estatísticas</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 20px 30px;
+      border-radius: 12px;
+      margin-bottom: 30px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 28px;
+      color: #333;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 15px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: inline-block;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+      background: #f3f4f6;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e5e7eb;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .stat-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 8px 12px rgba(0,0,0,0.15);
+    }
+
+    .stat-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .stat-icon {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+    }
+
+    .stat-icon.purple { background: #f3f0ff; }
+    .stat-icon.blue { background: #eff6ff; }
+    .stat-icon.green { background: #f0fdf4; }
+    .stat-icon.orange { background: #fff7ed; }
+
+    .stat-value {
+      font-size: 36px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 14px;
+      color: #6b7280;
+      font-weight: 500;
+    }
+
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .chart-card {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .chart-card h3 {
+      font-size: 18px;
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 300px;
+    }
+
+    canvas {
+      max-width: 100%;
+    }
+
+    .recent-activity {
+      background: white;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .recent-activity h3 {
+      font-size: 18px;
+      color: #333;
+      margin-bottom: 20px;
+    }
+
+    .activity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .activity-item {
+      padding: 15px;
+      background: #f9fafb;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+      transition: all 0.2s ease;
+    }
+
+    .activity-item:hover {
+      background: #f3f4f6;
+      transform: translateX(5px);
+    }
+
+    .activity-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .activity-title {
+      font-weight: 600;
+      color: #333;
+    }
+
+    .activity-status {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status-open {
+      background: #dcfce7;
+      color: #166534;
+    }
+
+    .status-closed {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .activity-message {
+      font-size: 14px;
+      color: #6b7280;
+      margin-bottom: 5px;
+    }
+
+    .activity-time {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: white;
+      font-size: 18px;
+    }
+
+    .error {
+      background: #fee2e2;
+      color: #991b1b;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    @media (max-width: 768px) {
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .header {
+        flex-direction: column;
+        gap: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 Dashboard</h1>
+      <div class="header-actions">
+        <a href="clientui.html" class="btn btn-secondary">← Voltar ao Chat</a>
+        <button class="btn btn-primary" onclick="loadDashboard()">🔄 Atualizar</button>
+      </div>
+    </div>
+
+    <div id="error-message"></div>
+    <div id="loading" class="loading">Carregando estatísticas...</div>
+
+    <div id="dashboard-content" style="display: none;">
+      <!-- Overview Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <div class="stat-icon purple">💬</div>
+          </div>
+          <div class="stat-value" id="total-conversations">0</div>
+          <div class="stat-label">Total de Conversas</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <div class="stat-icon blue">🔄</div>
+          </div>
+          <div class="stat-value" id="active-conversations">0</div>
+          <div class="stat-label">Conversas Ativas</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <div class="stat-icon green">📨</div>
+          </div>
+          <div class="stat-value" id="total-messages">0</div>
+          <div class="stat-label">Total de Mensagens</div>
+        </div>
+
+        <div class="stat-card">
+          <div class="stat-card-header">
+            <div class="stat-icon orange">🤖</div>
+          </div>
+          <div class="stat-value" id="bot-response-rate">0%</div>
+          <div class="stat-label">Taxa de Resposta Bot</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <h3>Conversas nos Últimos 7 Dias</h3>
+          <div class="chart-container">
+            <canvas id="conversationsChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <h3>Mensagens por Tipo</h3>
+          <div class="chart-container">
+            <canvas id="messagesTypeChart"></canvas>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <h3>Serviços de Bot Utilizados</h3>
+          <div class="chart-container">
+            <canvas id="botServicesChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Activity -->
+      <div class="recent-activity">
+        <h3>Conversas Recentes</h3>
+        <div class="activity-list" id="recent-conversations"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart.js Library -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <script>
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+      window.location.href = "index.html";
+    }
+
+    let charts = {};
+
+    async function loadDashboard() {
+      const loading = document.getElementById("loading");
+      const content = document.getElementById("dashboard-content");
+      const errorDiv = document.getElementById("error-message");
+
+      loading.style.display = "block";
+      content.style.display = "none";
+      errorDiv.innerHTML = "";
+
+      try {
+        const response = await fetch("/dashboard/statistics", {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Update overview stats
+        document.getElementById("total-conversations").textContent = data.overview.total_conversations;
+        document.getElementById("active-conversations").textContent = data.overview.active_conversations;
+        document.getElementById("total-messages").textContent = data.overview.total_messages;
+        document.getElementById("bot-response-rate").textContent = data.overview.bot_response_rate + "%";
+
+        // Render charts
+        renderConversationsChart(data.conversations_last_7_days);
+        renderMessagesTypeChart(data.messages_by_type);
+        renderBotServicesChart(data.bot_services);
+
+        // Render recent conversations
+        renderRecentConversations(data.recent_conversations);
+
+        loading.style.display = "none";
+        content.style.display = "block";
+
+      } catch (error) {
+        console.error("Error loading dashboard:", error);
+        loading.style.display = "none";
+        errorDiv.innerHTML = `<div class="error">Erro ao carregar dashboard: ${error.message}</div>`;
+      }
+    }
+
+    function renderConversationsChart(data) {
+      const ctx = document.getElementById("conversationsChart");
+
+      // Destroy existing chart if it exists
+      if (charts.conversations) {
+        charts.conversations.destroy();
+      }
+
+      charts.conversations = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => {
+            const date = new Date(d.date);
+            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+          }),
+          datasets: [{
+            label: 'Conversas',
+            data: data.map(d => d.count),
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            tension: 0.4,
+            fill: true
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderMessagesTypeChart(data) {
+      const ctx = document.getElementById("messagesTypeChart");
+
+      if (charts.messagesType) {
+        charts.messagesType.destroy();
+      }
+
+      charts.messagesType = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: ['Clientes', 'Agentes', 'Bot'],
+          datasets: [{
+            data: [data.customer, data.agent, data.bot],
+            backgroundColor: [
+              '#f59e0b',
+              '#3b82f6',
+              '#10b981'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    function renderBotServicesChart(data) {
+      const ctx = document.getElementById("botServicesChart");
+
+      if (charts.botServices) {
+        charts.botServices.destroy();
+      }
+
+      charts.botServices = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Claude', 'Ollama', 'Fallback'],
+          datasets: [{
+            label: 'Mensagens',
+            data: [data.claude, data.ollama, data.fallback],
+            backgroundColor: [
+              '#9c27b0',
+              '#ff9800',
+              '#607d8b'
+            ]
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: false
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: {
+                stepSize: 1
+              }
+            }
+          }
+        }
+      });
+    }
+
+    function renderRecentConversations(conversations) {
+      const container = document.getElementById("recent-conversations");
+
+      if (conversations.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #6b7280;">Nenhuma conversa recente</p>';
+        return;
+      }
+
+      container.innerHTML = conversations.map(conv => {
+        const statusClass = conv.status === 'open' ? 'status-open' : 'status-closed';
+        const time = conv.last_message_time ? new Date(conv.last_message_time).toLocaleString('pt-BR') : 'N/A';
+
+        return `
+          <div class="activity-item">
+            <div class="activity-header">
+              <div class="activity-title">${conv.name || conv.customer_number}</div>
+              <span class="activity-status ${statusClass}">${conv.status}</span>
+            </div>
+            <div class="activity-message">${conv.last_message || 'Sem mensagens'}</div>
+            <div class="activity-time">Última atividade: ${time}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Load dashboard on page load
+    window.addEventListener('DOMContentLoaded', loadDashboard);
+  </script>
+</body>
+</html>
